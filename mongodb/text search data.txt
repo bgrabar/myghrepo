@@ -1,0 +1,16 @@
+db.text.insert({a: "quick brown fox"});
+db.text.insert({a: "brown quick fox"});
+db.text.insert({a: "slow brown wolf"});
+db.text.insert({a: "quick black wolf"});
+db.text.insert({a: "slow black fox"});
+db.text.insert({a: "fast black wolf"});
+db.text.insert({a: "quick fast black fox"});
+db.text.insert({a: "lazy dog"});
+db.text.insert({a: "active dog"});
+db.text.insert({a: "fast cat"});
+db.text.insert({a: "lazy brown dog"});
+db.text.insert({a: "fast black cat"});
+db.text.insert({a: "quick black dog"});
+db.text.insert({a: "active black wolf"});
+db.text.insert({a: "active brown dog"});
+db.text.insert({a: "lazy fox"});

@@ -1,0 +1,15 @@
+db.loc.insert({ l : [ 87, 34 ] });
+db.loc.insert({ l : [ 85, 31 ] });
+db.loc.insert({ l : [ 86, 34 ] });
+db.loc.insert({ l : [ 88, 30 ] });
+db.loc.insert({ l : [ 87, 32 ] });
+db.loc.insert({ l : [ 88, 32 ] });
+db.loc.insert({ l : [ 89, 30 ] });
+db.loc.insert({ l : [ 89, 35 ] });
+db.loc.insert({ l : [ 82, 33 ] });
+db.loc.insert({ l : [ 80, 39 ] });
+db.loc.insert({ l : [ 90, 25 ] });
+db.loc.insert({ l : [ 75, 30 ] });
+db.loc.insert({ l : [ 85, 20 ] });
+db.loc.insert({ l : [ 80, 40 ] });
+
