@@ -4,4 +4,3 @@ mongos --port 27017 --configdb gromit.local:27019 --logpath /var/log/mongodb/mon
 
 # --configdb gromit:27019
 
-# --chunkSize 1
