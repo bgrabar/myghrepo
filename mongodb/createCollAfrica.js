@@ -13,7 +13,7 @@ for (x=1;x<=1000000;x=x+8) {
       case 7: tmp1 = "hippopotamus" ; break;
     }
 
-    db.africa.insert( { n : (x + y ) , type : ( tmp1 ) } ) 
+    db.africa.insert( { n : (x + y ) , a : ( tmp1 ) } ) 
 
   }
 

@@ -30,7 +30,7 @@ for (x=1;x<=5000000;x=x+25) {
       case 24: tmp1 = "hippopotamus" ; tmp2 = "none" ;  break;
     }
 
-    db.all.insert( { n : (x + y ) , type : ( tmp1 ) , trait : ( tmp2 ) } ) 
+    db.all.insert( { n : (x + y ) , a : ( tmp1 ) , c : ( tmp2 ) } ) 
 
   }
 
