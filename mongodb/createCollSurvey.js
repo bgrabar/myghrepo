@@ -17,14 +17,14 @@ for (x=1;x<=1000000;x=x+19) {
       case 11: tmp1 = "Ford" ; tmp2 = [ "Susan", "Steven", "Michael", "John" ] ; break;
       case 12: tmp1 = "Carter" ; tmp2 = [ "Donnel", "Jack", "James", "Amy" ] ; break;
       case 13: tmp1 = "Reagan" ; tmp2 = [ "Michael", "Maureen", "Patti", "Ron" ] ; break;
-      case 14: tmp1 = "Kerrigan" ; tmp2 = [ "Nancy", "Tanya", "Jeff", "Shawn", "Shane" ] ; break;
+      case 14: tmp1 = "Brady" ; tmp2 = [ "Greg", "Marsha", "Peter", "Jan", "Cindy", "Bobby" ] ; break;
       case 15: tmp1 = "Rockford" ; tmp2 = [ "Dennis", "Dan", "Doreen", "Dana" ] ; break;
       case 16: tmp1 = "Smith" ; tmp2 = [ "Veronica", "Luke" ] ; break;
       case 17: tmp1 = "Doctorow" ; tmp2 = [ "Frank", "Mark", "James", "Holly" ] ; break;
       case 18: tmp1 = "McDougal" ; tmp2 = [ "Bruce",  "Matthew", "Chip", "Holly" ] ; break;
     }
 
-    db.census.insert( { n : (x + y ), household : ( tmp1 ), children : ( tmp2 ) } ) 
+    db.survey.insert( { n : (x + y ), household : ( tmp1 ), children : ( tmp2 ) } )
 
   }
 
