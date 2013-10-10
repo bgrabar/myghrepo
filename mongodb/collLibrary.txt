@@ -1,0 +1,18 @@
+db.library.insert( [
+{ "_id" : 8751 , "a" : 10 , "book" : "The Banquet" ,           "price" : 22 , "stock" : 4 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8752 , "a" : 91 , "book" : "Divine Comedy",          "price" : 22 , "stock" : 2 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna" } } ,
+{ "_id" : 8644 , "a" : 25 , "book" : "De vulgari eloquentia" , "price" : 18 , "stock" : 4 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8645 , "a" : 33 , "book" : "Eclogues" ,              "price" : 14 , "stock" : 1 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8623 , "a" : 41 , "book" : "De Monarchia" ,          "price" : 14 , "stock" : 0 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8754 , "a" : 49 , "book" : "Paradiso" ,              "price" : 16 , "stock" : 2 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8875 , "a" : 57 , "book" : "The Rhymes" ,            "price" : 24 , "stock" : 2 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8761 , "a" : 65 , "book" : "The New Life" ,          "price" : 22 , "stock" : 8 , author : "Dante" , bio : { "born" : "Florence" , "died" : "Ravenna"  } } ,
+{ "_id" : 8650 , "a" : 73 , "book" : "Decameron" ,             "price" : 22 , "stock" : 8 , author : "Boccaccio" , bio : { "born" : "Certaldo" , "died" : "Certaldo"  } } ,
+{ "_id" : 8559 , "a" : 81 , "book" : "On Famous Women" ,       "price" : 28 , "stock" : 8 , author : "Boccaccio" , bio : { "born" : "Certaldo" , "died" : "Certaldo"  } } ,
+{ "_id" : 9723 , "a" : 15 , "book" : "Songbook" ,              "price" : 22 , "stock" : 6 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } } ,
+{ "_id" : 9724 , "a" : 15 , "book" : "Triumphs" ,              "price" : 18 , "stock" : 1 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } } ,
+{ "_id" : 9725 , "a" : 15 , "book" : "My Secret Book" ,        "price" : 22 , "stock" : 4 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } } ,
+{ "_id" : 9726 , "a" : 15 , "book" : "On Famous Men" ,         "price" : 12 , "stock" : 1 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } } ,
+{ "_id" : 9727 , "a" : 15 , "book" : "On the Solitary Life" ,  "price" : 12 , "stock" : 3 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } } ,
+{ "_id" : 9729 , "a" : 15 , "book" : "On Religious Leisure" ,  "price" : 12 , "stock" : 1 , author : "Petrarch" , bio : { "born" : "Arezzo" , "died" : "Arquà Petrarca"  } }
+] )
