@@ -1,0 +1,13 @@
+When running 
+
+"mongo --port XXXXX",
+
+ALWAYS make sure to run the CORRECT VERIONS of mongo.
+
+For example, use 
+
+cd /Users/bob/mongo
+./mongo --port XXXXX
+
+
+  
