@@ -1,0 +1,18 @@
+db.textSearchColl.insert( [
+{ a : "quick brown fox" } ,
+{ a : "brown quick fox" } ,
+{ a : "slow brown wolf" } ,
+{ a : "quick black wolf" } ,
+{ a : "slow black fox" } ,
+{ a : "fast black wolf" } ,
+{ a : "quick fast black fox" } ,
+{ a : "lazy dog" } ,
+{ a : "active dog" } ,
+{ a : "fast cat" } ,
+{ a : "lazy brown dog" } ,
+{ a : "fast black cat" } ,
+{ a : "quick black dog" } ,
+{ a : "active black wolf" } ,
+{ a : "active brown dog" } ,
+{ a : "lazy fox" }
+] )
