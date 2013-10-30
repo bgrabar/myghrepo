@@ -1,4 +1,4 @@
-db.textSearchColl.insert( [
+db.textSearch.insert( [
 { a : "quick brown fox" } ,
 { a : "brown quick fox" } ,
 { a : "slow brown wolf" } ,
