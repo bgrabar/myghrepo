@@ -33,9 +33,7 @@ db.bios.insert( [
             "award" : "Draper Prize",
             "year" : 1993,
             "by" : "National Academy of Engineering"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : ObjectId("51df07b094c6acd67e492f41"),
     "name" : {
@@ -63,9 +61,7 @@ db.bios.insert( [
             "award" : "IBM Fellow",
             "year" : 1970,
             "by" : "IBM"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 3,
     "name" : {
@@ -101,9 +97,7 @@ db.bios.insert( [
             "award" : "National Medal of Technology",
             "year" : 1991,
             "by" : "United States"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 4,
     "name" : {
@@ -131,9 +125,7 @@ db.bios.insert( [
             "award" : "IEEE John von Neumann Medal",
             "year" : 2001,
             "by" : "IEEE"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 5,
     "name" : {
@@ -161,9 +153,7 @@ db.bios.insert( [
             "award" : "IEEE John von Neumann Medal",
             "year" : 2001,
             "by" : "IEEE"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 6,
     "name" : {
@@ -184,9 +174,7 @@ db.bios.insert( [
             "award" : "NLUUG Award",
             "year" : 2003,
             "by" : "NLUUG"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : ObjectId("51e062189c6ae665454e301d"),
     "name" : {
@@ -214,9 +202,7 @@ db.bios.insert( [
             "award" : "Japan Prize",
             "year" : 2011,
             "by" : "The Japan Prize Foundation"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 10,
     "name" : {
@@ -233,9 +219,7 @@ db.bios.insert( [
             "award" : "Award for the Advancement of Free Software",
             "year" : "2011",
             "by" : "Free Software Foundation"
-        }
-    ]
-}
+        } ] },
 {
     "_id" : 100,
     "name" : {
@@ -263,7 +247,5 @@ db.bios.insert( [
             "award" : "IBM Fellow",
             "year" : 1970,
             "by" : "IBM"
-        }
-    ]
-}
+        } ] }
 ] )
