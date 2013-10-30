@@ -1,16 +1,19 @@
-db.loc.insert( [
-{ l : [ 87, 34 ] } ,
-{ l : [ 85, 31 ] } ,
-{ l : [ 86, 34 ] } ,
-{ l : [ 88, 30 ] } ,
-{ l : [ 87, 32 ] } ,
-{ l : [ 88, 32 ] } ,
-{ l : [ 89, 30 ] } ,
-{ l : [ 89, 35 ] } ,
-{ l : [ 82, 33 ] } ,
-{ l : [ 80, 39 ] } ,
-{ l : [ 90, 25 ] } ,
-{ l : [ 75, 30 ] } ,
-{ l : [ 85, 20 ] } ,
-{ l : [ 80, 40 ] }
-) ]
+db.locations.insert( [
+{ city: "Madrid", loc: { type : "Point" , coordinates : [ 3.7, 40.4 ] } },
+{ city: "Barcelona", loc: { type : "Point" , coordinates : [ 2.2, 41.4 ] } },
+{ city: "Toledo", loc: { type : "Point" , coordinates : [ 4.0, 39.9 ] } },
+{ city: "Valencia", loc: { type : "Point" , coordinates : [ 0.4, 39.5 ] } },
+{ city: "Salamanca", loc: { type : "Point" , coordinates : [ 5.7, 41.0 ] } },
+{ city: "Penafiel", loc: { type : "Point" , coordinates : [ 4.1, 41.6 ] } },
+{ city: "Granada", loc: { type : "Point" , coordinates : [ 3.6, 37.2 ] } },
+{ city: "Cordoba", loc: { type : "Point" , coordinates : [ 4.4, 37.6 ] } },
+{ city: "Merida", loc: { type : "Point" , coordinates : [ 6.3, 39.0 ] } },
+{ city: "Pamplona", loc: { type : "Point" , coordinates : [ 1.6, 42.8 ] } },
+{ city: "Tarragona", loc: { type : "Point" , coordinates : [ 1.2, 41.1 ] } },
+{ city: "Seville", loc: { type : "Point" , coordinates : [ 6.0, 37.4 ] } },
+{ city: "Bilbao", loc: { type : "Point" , coordinates : [ 2.9, 43.3 ] } },
+{ city: "Segovia", loc: { type : "Point" , coordinates : [ 4.2, 41.0 ] } },
+{ city: "Huelva", loc: { type : "Point" , coordinates : [ 7.0, 37.3 ] } },
+{ city: "Burgos", loc: { type : "Point" , coordinates : [ 3.7, 42.4 ] } },
+{ city: "Alicante", loc: { type : "Point" , coordinates : [ 0.5, 38.3 ] } }
+] )
