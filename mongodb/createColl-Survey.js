@@ -1,4 +1,4 @@
-for (x=1;x<=499000;x=x+19) {
+for (x=1;x<=199000;x=x+19) {
 
   for (y=0;y<19;y++) {
 
@@ -23,9 +23,6 @@ for (x=1;x<=499000;x=x+19) {
       case 17: tmp1 = "Doctorow" ;  tmp2 = [ "Frank", "Mark", "James", "Holly" ] ; break;
       case 18: tmp1 = "McDougal" ;  tmp2 = [ "Bruce",  "Matthew", "Chip", "Holly" ] ; break;
     }
-
     db.survey.insert( { n : (x + y ), household : ( tmp1 ), children : ( tmp2 ) } )
-
   }
-
 }
