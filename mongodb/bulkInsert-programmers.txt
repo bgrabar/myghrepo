@@ -1,4 +1,4 @@
-db.bios.insert( [
+db.programmers.insert( [
 {
     "_id" : 1,
     "name" : {
