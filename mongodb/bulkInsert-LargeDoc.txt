@@ -1,0 +1,195 @@
+{
+    "_id" : "1234",
+    "document" : {
+        "r_object_id" : "abcd",
+        "priority" : 2,
+        "products" : {
+            "product" : [
+                "pn1",
+                "pn2",
+                "pn3",
+                "pn4"
+            ]
+        },
+        "doc_type" : "data sheet",
+        "version" : 3,
+        "priority_flag" : false,
+        "country_code" : "TH",
+        "business_group" : "Technology Operations",
+        "cmg_name" : "EMEA Tech",
+        "col_master_id" : "4a5b6c7d",
+        "col_ref_update_date" : "2012-11-06T19:35:08",
+        "col_update_date" : "2013-04-01T15:20:45",
+        "col_update_user" : "bob",
+        "col_valid_flag" : true,
+        "content_class" : "standard_marketing_doc",
+        "it_id" : "4a5b6c7d",
+        "inventory" : 0,
+        "lifecycle_state_update_date" : "2013-04-01T15:24:07",
+        "lifecycle_state_update_user" : "bob",
+        "object_create_date" : "2012-11-06T19:35:08",
+        "owner_name" : "alice",
+        "r_version_labels" : {
+            "r_version_label" : [
+                "FINAL",
+                "IR",
+                "WIP",
+                "CURRENT",
+                3
+            ]
+        },
+        "regions" : {
+            "region" : "Europe/Middle East/Africa"
+        },
+        "authors" : {
+            "author" : "(contact@contact.com)"
+        },
+        "search_keywords" : {
+            "search_keyword" : [
+                "plug",
+                "adapter",
+                "connector"
+            ]
+        },
+        "cmg_acronym" : "uncle",
+        "cmg_feedback_address" : "contact@contact.com",
+        "private_document_flag" : false,
+        "master_object_name" : "1234",
+        "language_label" : "Spanish/Castilian",
+        "full_title" : {
+            "@language_code" : "ES_ES",
+            "#" : "Cartuchos de tinta HP 1315"
+        },
+        "collection_full_title" : "Inkoustov kazety HP 13",
+        "property_update_date" : "2012-06-27T08:33:19",
+        "content_update_date" : "2007-06-11T03:34:48",
+        "collection_search_keywords" : {
+            "collection_search_keyword" : [
+                "emea",
+                "PGE_Marcom",
+                "5982-1207CSE"
+            ]
+        },
+        "product_levels" : {
+            "product_level" : "SKU"
+        },
+        "audiences" : {
+            "audience" : [
+                {
+                    "audience_name" : "Customers",
+                    "audience_release_date" : "2005-11-04T00:00:00",
+                    "audience_expiry_date" : "2014-03-21T10:23:37"
+                },
+                {
+                    "audience_name" : "Partners",
+                    "audience_release_date" : "2005-11-04T00:00:00",
+                    "audience_expiry_date" : "2014-03-21T10:23:37"
+                },
+                {
+                    "audience_name" : "ACME",
+                    "audience_release_date" : "2005-11-04T00:00:00",
+                    "audience_expiry_date" : "2014-03-21T10:23:37"
+                }
+            ]
+        },
+        "pub_controller" : {
+            "user_address" : "contact@contact.com",
+            "user_name" : "tim",
+            "first_name" : "Tim",
+            "last_name" : "Jones",
+            "employee_id" : "00650285",
+            "locationcode" : "13006100FV000000",
+            "business_group" : "Global Marketing",
+            "business_unit" : "PPS Marketing",
+            "telephone" : "000",
+            "building_name" : "HQ",
+            "addr_street" : "Main",
+            "addr_city" : "Old Town",
+            "addr_country_code" : "US"
+        },
+        "pub_manager" : {
+            "user_address" : "contact@contact.com",
+            "user_name" : "carlos",
+            "first_name" : "Carlos",
+            "last_name" : "Smith",
+            "employee_id" : "00100562",
+            "locationcode" : NumberLong("8300621100000000"),
+            "business_group" : "Global Marketing",
+            "business_unit" : "HP Experience",
+            "telephone" : "000",
+            "mail_stop" : "MKTG",
+            "hp_post" : "D7",
+            "hp_floor" : 1,
+            "building_name" : "West",
+            "addr_street" : "Elm Street",
+            "addr_city" : "OldTown",
+            "addr_country_code" : "DE"
+        },
+        "pub_manager_backup" : {
+            "user_address" : "contact@contact.com",
+            "user_name" : "tim",
+            "first_name" : "Tim",
+            "last_name" : "Jones",
+            "employee_id" : "7",
+            "locationcode" : "77777",
+            "business_group" : "Global Marketing",
+            "business_unit" : "PPS Marketing",
+            "telephone" : "000",
+            "building_name" : "HQ",
+            "addr_street" : "East Street",
+            "addr_city" : "NewCity",
+            "addr_country_code" : "TH"
+        },
+        "business_units" : {
+            "business_unit" : "Other IPG"
+        },
+        "organization" : "Imaging and Printing",
+        "smartflow_content_types" : {
+            "smartflow_content_type" : "Marketing"
+        },
+        "pub_vendor_details" : "",
+        "renditions" : {
+            "rendition" : {
+                "@size" : "312341",
+                "@last_updated_date" : "2005-11-04T01:49:14",
+                "@content_type" : "pdf",
+                "#" : "5982-1207ESE.pdf"
+            }
+        },
+        "col_id" : "0000a5a58009628d",
+        "content_version_date" : "2005-05-11T00:00:00",
+        "description" : "Cartuchos de tinta HP 13, lores, datos, spanish, 02-2005. 03-2010",
+        "disclosure_level" : "Public",
+        "content_version" : 1,
+        "feedback_address" : "contact@contact.com",
+        "document_class" : "marketing_doc",
+        "language_code" : "ES_ES",
+        "concentra_internal_id" : "0900a5a586399458",
+        "creation_date" : "2005-11-04T01:49:10",
+        "object_name" : "abcd",
+        "original_docid" : "efgh",
+        "original_filename" : "ijkl",
+        "original_system" : "EMEA-Printing",
+        "pub_air_program_flag" : false,
+        "pub_flag" : true,
+        "pub_inventory_scrap_count" : -1,
+        "pub_media" : "Document (Hardcopy/Electronic)",
+        "pub_page_count" : 1,
+        "pub_page_size" : "A4",
+        "pub_ref_update_date" : "2013-01-15T17:29:26",
+        "review_date" : "2015-10-13T00:00:00",
+        "collection_description" : "HP 13 Ink Cartridges. 03-2010",
+        "corporate_content_flag" : false,
+        "customer_segment_codes" : {
+            "customer_segment_code" : [
+                5,
+                3
+            ]
+        },
+        "action" : "update"
+    },
+    "mime" : "text/xml",
+    "eventType" : "update",
+    "priority" : 2,
+    "lastModified" : NumberLong("1383577550017")
+}
