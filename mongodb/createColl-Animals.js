@@ -29,6 +29,6 @@ for (x=1;x<=199000;x=x+25) {
       case 23: name = "rhinoceros" ;   traits = [ "horns" ] ; break;
       case 24: name = "hippopotamus" ; traits = [ "none" ] ; break;
     }
-    db.all.insert( { n : (x + y ) , a : ( name ) , t : ( traits ) } ) 
+    db.animals.insert( { n : (x + y ) , a : ( name ) , t : ( traits ) } ) 
   }
 }
