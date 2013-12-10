@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PYTHON=python
-UPLOAD_PY="$HOME/scratch/tools/upload.py"
+UPLOAD_PY="$HOME/myrepo/mongodb/tools/upload.py"
 CR_SERVER="codereview.10gen.com"
 EMAIL=bob.grabar@10gen.com
 
