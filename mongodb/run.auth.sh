@@ -10,6 +10,6 @@
 
 # authenticate:
 #
-# ./mongo --port 34021 --username "super" --password "pass" --authenticationDatabase "admin"
+# ./mongo --port 34021 --username "admin" --password "pass" --authenticationDatabase "admin"
 #
 #
