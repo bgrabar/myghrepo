@@ -7,7 +7,7 @@ emailAddress=bob.grabar@10gen.com
 
 # get the commit message
 msg=`git log -1 --oneline | cut -d' ' -f2-`
-hash=`git rev-parse daa833cfff398d88a3b035a4ed84dce5d098923d..HEAD`
+hash=`git rev-parse de5e56fcc8ad897bee9a332fe172352b551e3e93..HEAD`
 
 if [[ $# -eq 0 ]]; then
    # just last commit
