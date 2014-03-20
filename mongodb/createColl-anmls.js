@@ -29,6 +29,6 @@ for (x=1;x<=1000;x=x+25) {
       case 23: name = "rhinoceros" ;   traits = [ "horns" ] ; break;
       case 24: name = "hippopotamus" ; traits = [ "none" ] ; break;
     }
-    db.pets.insert( { n : (x + y ) , a : ( name ) , t : ( traits ) } ) 
+    db.anmls.insert( { n : (x + y ) , a : ( name ) , t : ( traits ) } ) 
   }
 }
