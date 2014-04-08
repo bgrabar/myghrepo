@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/Users/bob/mongo/mongod --port 34021 --auth --dbpath /data/auth --config /etc/mongodb/auth.conf --logpath /var/log/mongodb/auth.log --fork --nojournal
+/Users/bob/mongo/mongod --port 34021 --auth --config /etc/mongodb/auth.conf
 
 
 
