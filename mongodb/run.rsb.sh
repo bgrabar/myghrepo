@@ -7,3 +7,6 @@
 /Users/bob/mongo/mongod --port 34013 --replSet rsb --dbpath /data/rsb3 --config /etc/mongodb/null --logpath /var/log/mongodb/rsb3.log --fork --nojournal
 
 
+
+
+

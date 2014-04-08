@@ -19,3 +19,9 @@ options file:
 mongod options: { dbpath: "/data/db/test0", keyFile: "jstests/libs/key1", port: 30000, setParameter: { enableTestCommands: "1" } }
 
 mongos options: { chunkSize: 50, configdb: "localhost:30000", keyFile: "jstests/libs/key1", port: 30999, setParameter: { enableTestCommands: "1" } }
+
+
+
+
+
+

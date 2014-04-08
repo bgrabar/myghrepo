@@ -7,3 +7,6 @@
 /Users/bob/mongo/mongod --port 34003 --replSet rsa --dbpath /data/rsa3 --config /etc/mongodb/null --logpath /var/log/mongodb/rsa3.log --fork --nojournal
 
 
+
+
+
