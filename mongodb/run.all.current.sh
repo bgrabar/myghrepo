@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Why does adding the following option to each line fail???:
+# --keyFile /Users/bob/keyfile
+
 
 
 mongod --port 34001 --config /etc/mongodb/config-files/rsa1.conf
