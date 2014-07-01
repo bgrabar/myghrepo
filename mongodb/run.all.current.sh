@@ -20,5 +20,7 @@ mongod --configsvr --port 27019 --config /etc/mongodb/config-files/cs1.conf
 mongod --configsvr --port 27020 --config /etc/mongodb/config-files/cs2.conf
 mongod --configsvr --port 27021 --config /etc/mongodb/config-files/cs3.conf
 
-mongos --port 27017 --configdb gromit.local:27019,gromit.local:27020,gromit.local:27021 --logpath /var/log/mongodb/mongos.log --chunkSize 1 --fork
+mongos --port 27017 --configdb gromit.local:27019,gromit.local:27020,gromit.local:27021 --config /etc/mongodb/config-files/mongos.conf
+
+
 
