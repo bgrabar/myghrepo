@@ -8,9 +8,9 @@ connection = MongoClient('localhost', 34021)
 db = connection.test
 
 # handle to names collection
-names = db.names
+n = db.names
 
-item = names.find_one()
+item = n.find_one()
 
 print item['name']
 
