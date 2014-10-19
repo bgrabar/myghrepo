@@ -7,10 +7,10 @@ connection = MongoClient('localhost', 34021)
 
 db = connection.test
 
-# handle to names collection
-n = db.names
+# create handle to names collection
+names = db.names
 
-item = n.find_one()
+item = names.find_one()
 
 print item['name']
 
