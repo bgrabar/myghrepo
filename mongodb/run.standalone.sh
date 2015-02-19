@@ -5,3 +5,4 @@
 /Users/bob/mongo/mongod --port 27017 --config /etc/mongodb/config-files/standalone.conf
 
 
+# mongod --port 27017 --dbpath /Users/bob/z/data --logpath /Users/bob/z/data/mongodb.log --fork
