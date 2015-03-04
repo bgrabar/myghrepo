@@ -5,7 +5,7 @@ import pymongo
 
 @bottle.route('/')
 def index():
-    
+
     # connect to mongoDB
     connection = pymongo.MongoClient('localhost', 34021)
 
