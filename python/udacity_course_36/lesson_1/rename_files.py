@@ -5,7 +5,7 @@ def rename_files():
   working_path = os.getcwd()
   # print working_path
 
-  new_path = "/Users/bob/myrepo/python/python.course.ud036/l1/prank"
+  new_path = "/Users/bob/myrepo/python/udacity_course_36/lesson_1/prank"
   # print new_path
 
   file_list = os.listdir(new_path)
