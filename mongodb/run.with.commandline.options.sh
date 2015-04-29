@@ -1,4 +1,4 @@
-# run a replica set to add to my own deployed and running Ops Manager:
+# run a replica set with commandline options:
 
 mongod --port 34071 --dbpath /data/rsz-71 --logpath /var/log/mongodb/rsz-71.log --fork --nojournal --replSet rsz
 
