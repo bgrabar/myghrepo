@@ -1,0 +1,10 @@
+public class Test {
+  
+  public static void main(String[] args) {
+    
+    String[] array = {"One", "Two", "Three", "Four"};
+    for (String var : array)
+      System.out.println("Element: " + var);
+    
+  }
+}
