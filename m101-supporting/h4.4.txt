@@ -1,0 +1,36 @@
+db.profile.find({op:"query",ns:"school2.students"},{millis:1}).sort({millis:-1})
+
+
+
+
+
+
+
+
+> db.profile.findOne()
+{
+	"_id" : ObjectId("544d88d37df9818172c53e04"),
+	"ts" : ISODate("2012-11-20T20:02:24.386Z"),
+	"op" : "command",
+	"ns" : "school2.$cmd",
+	"command" : {
+		"drop" : "student_grades"
+	},
+	"ntoreturn" : 1,
+	"keyUpdates" : 0,
+	"numYield" : 0,
+	"lockStats" : {
+		"timeLockedMicros" : {
+			"r" : 0,
+			"w" : 1481
+		},
+		"timeAcquiringMicros" : {
+			"r" : 0,
+			"w" : 4
+		}
+	},
+	"responseLength" : 129,
+	"millis" : 1,
+	"client" : "127.0.0.1",
+	"user" : ""
+}
