@@ -3,6 +3,8 @@ import os
 def rename_files():
 
   working_path = os.getcwd()
+
+  print working_path
   # print working_path
 
   new_path = "/Users/bob/myrepo/udacity_course_36/lesson_1/prank"
@@ -18,6 +20,7 @@ def rename_files():
     print("New Name - "+file_name.translate(None, "0123456789"))
 
   os.chdir(working_path)
+
 
 rename_files()
 
