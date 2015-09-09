@@ -1,4 +1,8 @@
-import os
+# Get a list of files.
+# Rename the list of files.
+
+
+import os            # for os.getcwd, os.listdir, os.chdir, os.rename
 
 def rename_files():
 
