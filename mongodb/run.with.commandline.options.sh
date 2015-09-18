@@ -1,7 +1,5 @@
 # run a replica set with command-line options
 
-# have used this with classic (bob.grabar+t1 ** mongodb.com)
-
 mongod --port 34051 --dbpath /data/rsz-51 --logpath /var/log/mongodb/rsz-51.log --fork --nojournal --replSet rsz
 
 mongod --port 34052 --dbpath /data/rsz-52 --logpath /var/log/mongodb/rsz-52.log --fork --nojournal --replSet rsz
