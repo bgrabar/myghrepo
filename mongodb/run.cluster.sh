@@ -12,8 +12,7 @@
 mongod --port 34001 --config /etc/mongodb/config-files/rsa1.conf
 mongod --port 34002 --config /etc/mongodb/config-files/rsa2.conf
 mongod --port 34003 --config /etc/mongodb/config-files/rsa3.conf
-# mongod --port 34004 --config /etc/mongodb/config-files/rsa4.conf
-# mongod --port 34005 --config /etc/mongodb/config-files/rsa5.conf
+# mongod --port 34004 --config /etc/mongodb/config-files/rsa4.
 
 
 
@@ -23,7 +22,6 @@ mongod --port 34011 --config /etc/mongodb/config-files/rsb1.conf
 mongod --port 34012 --config /etc/mongodb/config-files/rsb2.conf
 mongod --port 34013 --config /etc/mongodb/config-files/rsb3.conf
 # mongod --port 34014 --config /etc/mongodb/config-files/rsb4.conf
-# mongod --port 34015 --config /etc/mongodb/config-files/rsb5.conf
 
 
 

@@ -2,6 +2,9 @@
 
 
 
-# Runs from Code Repo:
+# Runs the compiled 'mongod' in
+# /Users/bob/mongo
+# instead of the installed 'mongod' in
+# /usr/local/bin/mongo
 
-/Users/bob/mongo/mongod --port 27017 --config /etc/mongodb/config-files/standalone.conf
+/Users/bob/mongo/mongod --port 35017 --config /etc/mongodb/config-files/standalone.conf
