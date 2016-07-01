@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8
 #
 # Copyright 2007 Google Inc.
 #
@@ -33,6 +34,7 @@ against by using the '--rev' option.
 # This code is derived from appcfg.py in the App Engine SDK (open source),
 # and from ASPN recipe #146306.
 
+import BaseHTTPServer
 import ConfigParser
 import cookielib
 import errno
@@ -47,9 +49,13 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import urllib
 import urllib2
 import urlparse
+import webbrowser
+
+from multiprocessing.pool import ThreadPool
 
 # The md5 module was deprecated in Python 2.5.
 try:
@@ -73,21 +79,23 @@ except ImportError:
 #  2: Info logs.
 #  3: Debug logs.
 verbosity = 1
-
-# The account type used for authentication.
-# This line could be changed by the review server (see handler for
-# upload.py).
-AUTH_ACCOUNT_TYPE = "HOSTED"
-
-# URL of the default review server. As for AUTH_ACCOUNT_TYPE, this line could be
-# changed by the review server (see handler for upload.py).
-DEFAULT_REVIEW_SERVER = "codereview.10gen.com"
+LOGGER = logging.getLogger('upload')
 
 # URL of the default Jira server.
 DEFAULT_JIRA_SERVER = "https://jira.mongodb.org"
 
+# The account type used for authentication.
+# This line could be changed by the review server (see handler for
+# upload.py).
+AUTH_ACCOUNT_TYPE = "GOOGLE"
+
+# URL of the default review server. As for AUTH_ACCOUNT_TYPE, this line could be
+# changed by the review server (see handler for upload.py).
+DEFAULT_REVIEW_SERVER = "mongodbcr.appspot.com"
+
 # Max size of patch or base file.
 MAX_UPLOAD_SIZE = 900 * 1024
+
 
 # Constants for version control names.  Used by GuessVCSName.
 VCS_GIT = "Git"
@@ -97,19 +105,121 @@ VCS_PERFORCE = "Perforce"
 VCS_CVS = "CVS"
 VCS_UNKNOWN = "Unknown"
 
-VCS_ABBREVIATIONS = {
-  VCS_MERCURIAL.lower(): VCS_MERCURIAL,
-  "hg": VCS_MERCURIAL,
-  VCS_SUBVERSION.lower(): VCS_SUBVERSION,
-  "svn": VCS_SUBVERSION,
-  VCS_PERFORCE.lower(): VCS_PERFORCE,
-  "p4": VCS_PERFORCE,
-  VCS_GIT.lower(): VCS_GIT,
-  VCS_CVS.lower(): VCS_CVS,
-}
+VCS = [
+{
+    'name': VCS_MERCURIAL,
+    'aliases': ['hg', 'mercurial'],
+}, {
+    'name': VCS_SUBVERSION,
+    'aliases': ['svn', 'subversion'],
+}, {
+    'name': VCS_PERFORCE,
+    'aliases': ['p4', 'perforce'],
+}, {
+    'name': VCS_GIT,
+    'aliases': ['git'],
+}, {
+    'name': VCS_CVS,
+    'aliases': ['cvs'],
+}]
+
+VCS_SHORT_NAMES = []    # hg, svn, ...
+VCS_ABBREVIATIONS = {}  # alias: name, ...
+for vcs in VCS:
+  VCS_SHORT_NAMES.append(min(vcs['aliases'], key=len))
+  VCS_ABBREVIATIONS.update((alias, vcs['name']) for alias in vcs['aliases'])
+
+
+# OAuth 2.0-Related Constants
+LOCALHOST_IP = '127.0.0.1'
+DEFAULT_OAUTH2_PORT = 8001
+ACCESS_TOKEN_PARAM = 'access_token'
+ERROR_PARAM = 'error'
+OAUTH_DEFAULT_ERROR_MESSAGE = 'OAuth 2.0 error occurred.'
+OAUTH_PATH = '/get-access-token'
+OAUTH_PATH_PORT_TEMPLATE = OAUTH_PATH + '?port=%(port)d'
+AUTH_HANDLER_RESPONSE = """\
+<html>
+  <head>
+    <title>Authentication Status</title>
+    <script>
+    window.onload = function() {
+      window.close();
+    }
+    </script>
+  </head>
+  <body>
+    <p>The authentication flow has completed.</p>
+  </body>
+</html>
+"""
+# Borrowed from google-api-python-client
+OPEN_LOCAL_MESSAGE_TEMPLATE = """\
+Your browser has been opened to visit:
+
+    %s
+
+If your browser is on a different machine then exit and re-run
+upload.py with the command-line parameter
+
+  --no_oauth2_webbrowser
+"""
+NO_OPEN_LOCAL_MESSAGE_TEMPLATE = """\
+Go to the following link in your browser:
+
+    %s
+
+and copy the access token.
+"""
 
 # The result of parsing Subversion's [auto-props] setting.
 svn_auto_props_map = None
+
+def ParseJiraCases(msg):
+  return re.findall(r'[A-Z]+-[1-9][0-9]*', msg)
+
+def UpdateJiraCases(jira_server, jira_user, jira_tickets, issue):
+  try:
+    import suds
+  except ImportError:
+    print "WARNING: Dependency missing for updating Jira.  Please 'pip install suds'."
+    return
+
+  print "Updating jira tickets " + ', '.join(jira_tickets)
+  jira_url = jira_server + '/rpc/soap/jirasoapservice-v2?wsdl'
+  jira = suds.client.Client(jira_url)
+
+  try:
+    logging.raiseExceptions = False
+    logging.getLogger('suds.client').propagate = False
+    auth_token = jira.service.login(
+      jira_user,
+      GetPassword(server=jira_server, user=jira_user, prompt="Jira password for %s: " % jira_user))
+  except suds.WebFault, ex:
+    print "Could not authenticate to jira service: " + ex.fault.faultstring
+    return
+
+  issue_comment = 'Code review url: %s' % issue
+  for ticket in jira_tickets:
+    try:
+      jira.service.addComment(auth_token, ticket, dict(body=issue_comment, roleLevel='Developers'))
+    except suds.WebFault, ex:
+      print "Failed to add comment to ticket %s: %s" % (ticket, ex.fault.faultstring)
+
+  # Change state to In Code Review if we can. -- try different transitions for different start state
+  for ticket in jira_tickets:
+    transitionFailed = True
+    for code in ["751", "761", "711"]:
+        try:
+          jira.service.progressWorkflowAction(auth_token, ticket, code, None)
+        except suds.WebFault, ex:
+          transitionFailed = True
+        transitionFailed = False
+        break
+
+    if transitionFailed:
+        print "Failed to transition to 'In Code Review' for ticket %s" % (ticket)
+
 
 def GetEmail(prompt):
   """Prompts the user for their email address and returns it.
@@ -142,6 +252,126 @@ def GetEmail(prompt):
     email = last_email
   return email
 
+# Use a shell for subcommands on Windows to get a PATH search.
+use_shell = sys.platform.startswith("win")
+
+def RunShellWithReturnCodeAndStderr(command, print_output=False,
+                           universal_newlines=True,
+                           env=os.environ):
+  """Executes a command and returns the output from stdout, stderr and the return code.
+
+  Args:
+    command: Command to execute.
+    print_output: If True, the output is printed to stdout.
+                  If False, both stdout and stderr are ignored.
+    universal_newlines: Use universal_newlines flag (default: True).
+
+  Returns:
+    Tuple (stdout, stderr, return code)
+  """
+  logging.info("Running %s", command)
+  env = env.copy()
+  env['LC_MESSAGES'] = 'C'
+  p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       shell=use_shell, universal_newlines=universal_newlines,
+                       env=env)
+  if print_output:
+    output_array = []
+    while True:
+      line = p.stdout.readline()
+      if not line:
+        break
+      print line.strip("\n")
+      output_array.append(line)
+    output = "".join(output_array)
+  else:
+    output = p.stdout.read()
+  p.wait()
+  errout = p.stderr.read()
+  if print_output and errout:
+    print >>sys.stderr, errout
+  p.stdout.close()
+  p.stderr.close()
+  return output, errout, p.returncode
+
+def RunShellWithReturnCode(command, print_output=False,
+                           universal_newlines=True,
+                           env=os.environ):
+  """Executes a command and returns the output from stdout and the return code."""
+  out, err, retcode = RunShellWithReturnCodeAndStderr(command, print_output,
+                           universal_newlines, env)
+  return out, retcode
+
+def RunShell(command, silent_ok=False, universal_newlines=True,
+             print_output=False, env=os.environ):
+  data, retcode = RunShellWithReturnCode(command, print_output,
+                                         universal_newlines, env)
+  if retcode:
+    ErrorExit("Got error status from %s:\n%s" % (command, data))
+  if not silent_ok and not data:
+    ErrorExit("No output from %s" % command)
+  return data
+
+def GetRemoteRepoName():
+  """Get the 'canonical' name of a repo.
+
+  As an example, this branch: upstream  https://github.com/10gen/corp.git (push)
+  should return this value: corp
+
+  This name is used in populating the CC field of the email.
+  """
+  out = RunShell(["git", "remote", "-v"]).splitlines()
+
+  # First search all remote repos for 'upstream'
+  for line in out:
+      matched = re.search(r"^upstream.*\/([^\/]+?)(.git)? \(push\)$", line)
+      if matched:
+          return matched.group(1)
+
+  # If no 'upstream' repos then search for 'origin'
+  for line in out:
+      matched = re.search(r"^origin.*\/([^\/]+?)(.git)? \(push\)$", line)
+      if matched:
+          return matched.group(1)
+
+  # If neither then we assume that this is an atypical case and that
+  # engineer can add a CC email manually later
+  return None
+
+
+def readRepoConfig():
+  repoConfig = {}
+  name = GetRemoteRepoName()
+  if name is None:
+    return None
+
+  try:
+    gitRoot = RunShell(["git", "rev-parse", "--show-toplevel"]).strip()
+
+    path = os.path.sep.join([gitRoot, 'codereview.rc' ])
+    print "os.path.sep.join = ", os.path.sep.join([gitRoot, 'codereview.rc' ])
+    print "os.path.join = ", os.path.join([gitRoot, 'codereview.rc' ])
+    if os.path.exists(path):
+      with open(path) as configFile:
+        for line in configFile:
+          (key, val) = line.split('=')
+          repoConfig[key] = val.strip()
+  except IOError:
+    pass
+
+  return repoConfig
+
+def ConstructCCEmail():
+  remote_repo_name = GetRemoteRepoName()
+
+  if remote_repo_name is None:
+    return None
+
+  ccList = [''.join(['codereview-', remote_repo_name, '@10gen.com'])]
+  ccList.append(config.get("CC", ""))
+
+  return ','.join(ccList)
+
 
 def StatusUpdate(msg):
   """Print a status message to stdout.
@@ -167,16 +397,24 @@ class ClientLoginError(urllib2.HTTPError):
   def __init__(self, url, code, msg, headers, args):
     urllib2.HTTPError.__init__(self, url, code, msg, headers, None)
     self.args = args
-    self.reason = args["Error"]
+    self._reason = args["Error"]
     self.info = args.get("Info", None)
+
+  @property
+  def reason(self):
+    # reason is a property on python 2.7 but a member variable on <=2.6.
+    # self.args is modified so it cannot be used as-is so save the value in
+    # self._reason.
+    return self._reason
 
 
 class AbstractRpcServer(object):
   """Provides a common interface for a simple RPC server."""
 
-  def __init__(self, host, auth_function, host_override=None, extra_headers={},
-               save_cookies=False, account_type=AUTH_ACCOUNT_TYPE):
-    """Creates a new HttpRpcServer.
+  def __init__(self, host, auth_function, host_override=None,
+               extra_headers=None, save_cookies=False,
+               account_type=AUTH_ACCOUNT_TYPE):
+    """Creates a new AbstractRpcServer.
 
     Args:
       host: The host to send requests to.
@@ -198,14 +436,14 @@ class AbstractRpcServer(object):
     self.host_override = host_override
     self.auth_function = auth_function
     self.authenticated = False
-    self.extra_headers = extra_headers
+    self.extra_headers = extra_headers or {}
     self.save_cookies = save_cookies
     self.account_type = account_type
     self.opener = self._GetOpener()
     if self.host_override:
-      logging.info("Server: %s; Host: %s", self.host, self.host_override)
+      LOGGER.info("Server: %s; Host: %s", self.host, self.host_override)
     else:
-      logging.info("Server: %s", self.host)
+      LOGGER.info("Server: %s", self.host)
 
   def _GetOpener(self):
     """Returns an OpenerDirector for making HTTP requests.
@@ -217,8 +455,8 @@ class AbstractRpcServer(object):
 
   def _CreateRequest(self, url, data=None):
     """Creates a new urllib request."""
-    logging.debug("Creating request for: '%s' with payload:\n%s", url, data)
-    req = urllib2.Request(url, data=data)
+    LOGGER.debug("Creating request for: '%s' with payload:\n%s", url, data)
+    req = urllib2.Request(url, data=data, headers={"Accept": "text/plain"})
     if self.host_override:
       req.add_header("Host", self.host_override)
     for key, value in self.extra_headers.iteritems():
@@ -374,7 +612,7 @@ class AbstractRpcServer(object):
     """
     # TODO: Don't require authentication.  Let the server say
     # whether it is necessary.
-    if not self.authenticated:
+    if not self.authenticated and self.auth_function:
       self._Authenticate()
 
     old_timeout = socket.getdefaulttimeout()
@@ -393,7 +631,7 @@ class AbstractRpcServer(object):
           for header, value in extra_headers.items():
             req.add_header(header, value)
         try:
-          f = self.opener.open(req)
+          f = self.opener.open(req, timeout=70)
           response = f.read()
           f.close()
           return response
@@ -401,15 +639,18 @@ class AbstractRpcServer(object):
           if tries > 3:
             raise
           elif e.code == 401 or e.code == 302:
+            if not self.auth_function:
+              raise
             self._Authenticate()
-##           elif e.code >= 500 and e.code < 600:
-##             # Server Error - try again.
-##             continue
           elif e.code == 301:
             # Handle permanent redirect manually.
             url = e.info()["location"]
             url_loc = urlparse.urlparse(url)
             self.host = '%s://%s' % (url_loc[0], url_loc[1])
+          elif e.code >= 500:
+            # TODO: We should error out on a 500, but the server is too flaky
+            # for that at the moment.
+            StatusUpdate('Upload got a 500 response: %d' % e.code)
           else:
             raise
     finally:
@@ -421,10 +662,16 @@ class HttpRpcServer(AbstractRpcServer):
 
   def _Authenticate(self):
     """Save the cookie jar after authentication."""
-    super(HttpRpcServer, self)._Authenticate()
-    if self.save_cookies:
-      StatusUpdate("Saving authentication cookies to %s" % self.cookie_file)
-      self.cookie_jar.save()
+    if isinstance(self.auth_function, OAuth2Creds):
+      access_token = self.auth_function()
+      if access_token is not None:
+        self.extra_headers['Authorization'] = 'OAuth %s' % (access_token,)
+        self.authenticated = True
+    else:
+      super(HttpRpcServer, self)._Authenticate()
+      if self.save_cookies:
+        StatusUpdate("Saving authentication cookies to %s" % self.cookie_file)
+        self.cookie_jar.save()
 
   def _GetOpener(self):
     """Returns an OpenerDirector that supports cookies and ignores redirects.
@@ -489,30 +736,372 @@ class CondensedHelpFormatter(optparse.IndentedHelpFormatter):
        optstr = " ".join(optlist)
      return optstr
 
+config = readRepoConfig()
 
-def GetPassword(server, user, prompt="Password: "):
-  global keyring
-  password = None
-  if keyring:
-    try:
-      password = keyring.get_password(server, user)
-    except:
-      # Sadly, we have to trap all errors here as
-      # gnomekeyring.IOError inherits from object. :/
-      print "Failed to get password from keyring"
-      keyring = None
-  if password is not None:
-    print "Using password from system keyring."
-  else:
-    password = getpass.getpass(prompt)
-    if keyring:
-      answer = raw_input("Store password in system keyring?(y/N) ").strip()
-      if answer == "y":
-        keyring.set_password(server, user, password)
-  return password
+parser = optparse.OptionParser(
+    usage=("%prog [options] [-- diff_options] [path...]\n"
+           "See also: http://code.google.com/p/rietveld/wiki/UploadPyUsage"),
+    add_help_option=False,
+    formatter=CondensedHelpFormatter()
+)
+parser.add_option("-h", "--help", action="store_true",
+                  help="Show this help message and exit.")
+parser.add_option("-y", "--assume_yes", action="store_true",
+                  dest="assume_yes", default=False,
+                  help="Assume that the answer to yes/no questions is 'yes'.")
+# Logging
+group = parser.add_option_group("Logging options")
+group.add_option("-q", "--quiet", action="store_const", const=0,
+                 dest="verbose", help="Print errors only.")
+group.add_option("-v", "--verbose", action="store_const", const=2,
+                 dest="verbose", default=1,
+                 help="Print info level logs.")
+group.add_option("--noisy", action="store_const", const=3,
+                 dest="verbose", help="Print all logs.")
+group.add_option("--print_diffs", dest="print_diffs", action="store_true",
+                 help="Print full diffs.")
+# Review server
+group = parser.add_option_group("Review server options")
+group.add_option("-s", "--server", action="store", dest="server",
+                 default=DEFAULT_REVIEW_SERVER,
+                 metavar="SERVER",
+                 help=("The server to upload to. The format is host[:port]. "
+                       "Defaults to '%default'."))
+group.add_option("-e", "--email", action="store", dest="email",
+                 metavar="EMAIL", default=None,
+                 help="The username to use. Will prompt if omitted.")
+group.add_option("-H", "--host", action="store", dest="host",
+                 metavar="HOST", default=DEFAULT_REVIEW_SERVER,
+                 help="Overrides the Host header sent with all RPCs.")
+group.add_option("--no_cookies", action="store_false",
+                 dest="save_cookies", default=True,
+                 help="Do not save authentication cookies to local disk.")
+group.add_option("--oauth2", action="store_true",
+                 dest="use_oauth2", default=True,
+                 help="Use OAuth 2.0 instead of a password.")
+group.add_option("--oauth2_port", action="store", type="int",
+                 dest="oauth2_port", default=DEFAULT_OAUTH2_PORT,
+                 help=("Port to use to handle OAuth 2.0 redirect. Must be an "
+                       "integer in the range 1024-49151, defaults to "
+                       "'%default'."))
+group.add_option("--no_oauth2_webbrowser", action="store_false",
+                 dest="open_oauth2_local_webbrowser", default=True,
+                 help="Don't open a browser window to get an access token.")
+group.add_option("--account_type", action="store", dest="account_type",
+                 metavar="TYPE", default=AUTH_ACCOUNT_TYPE,
+                 choices=["GOOGLE", "HOSTED"],
+                 help=("Override the default account type "
+                       "(defaults to '%default', "
+                       "valid choices are 'GOOGLE' and 'HOSTED')."))
+group.add_option("-j", "--number-parallel-uploads",
+                 dest="num_upload_threads", default=8,
+                 help="Number of uploads to do in parallel.")
+# Issue
+group = parser.add_option_group("Issue options")
+group.add_option("-d", "--description", action="store", dest="description",
+                 metavar="DESCRIPTION", default=None,
+                 help="Optional description when creating an issue.")
+group.add_option("-t", "--title", action="store", dest="title",
+                 help="New issue subject or new patch set title")
+group.add_option("-m", "--message", action="store", dest="message",
+                 default=None,
+                 help="New issue description or new patch set message")
+group.add_option("-F", "--file", action="store", dest="file",
+                 default=None, help="Read the message above from file.")
+group.add_option("-r", "--reviewers", action="store", dest="reviewers",
+                 metavar="REVIEWERS", default=None,
+                 help="Add reviewers (comma separated email addresses).")
+group.add_option("--cc", action="store", dest="cc",
+                 metavar="CC", default=ConstructCCEmail(),
+                 help="Add CC (comma separated email addresses).")
+group.add_option("--private", action="store_true", dest="private",
+                 default=False,
+                 help="Make the issue restricted to reviewers and those CCed")
+# Upload options
+group = parser.add_option_group("Patch options")
+group.add_option("-i", "--issue", type="int", action="store",
+                 metavar="ISSUE", default=None,
+                 help="Issue number to which to add. Defaults to new issue.")
+group.add_option("--base_url", action="store", dest="base_url", default=None,
+                 help="Base URL path for files (listed as \"Base URL\" when "
+                 "viewing issue).  If omitted, will be guessed automatically "
+                 "for SVN repos and left blank for others.")
+group.add_option("--download_base", action="store_true",
+                 dest="download_base", default=False,
+                 help="Base files will be downloaded by the server "
+                 "(side-by-side diffs may not work on files with CRs).")
+group.add_option("--rev", action="store", dest="revision",
+                 metavar="REV", default=None,
+                 help="Base revision/branch/tree to diff against. Use "
+                      "rev1:rev2 range to review already committed changeset.")
+group.add_option("--send_mail", action="store_true",
+                 dest="send_mail", default=False,
+                 help="Send notification email to reviewers.")
+group.add_option("--tag_local_repo", action="store_true",
+                 dest="tag_local_repo", default=False,
+                 help="Tag base and new commits with codereview_a_<issue id> and codereview_b_<issue id>")
+group.add_option("-p", "--send_patch", action="store_true",
+                 dest="send_patch", default=False,
+                 help="Same as --send_mail, but include diff as an "
+                      "attachment, and prepend email subject with 'PATCH:'.")
+group.add_option("--vcs", action="store", dest="vcs",
+                 metavar="VCS", default=None,
+                 help=("Explicitly specify version control system (%s)"
+                       % ", ".join(VCS_SHORT_NAMES)))
+group.add_option("--emulate_svn_auto_props", action="store_true",
+                 dest="emulate_svn_auto_props", default=False,
+                 help=("Emulate Subversion's auto properties feature."))
+# Git-specific
+group = parser.add_option_group("Git-specific options")
+group.add_option("--git_similarity", action="store", dest="git_similarity",
+                 metavar="SIM", type="int", default=50,
+                 help=("Set the minimum similarity percentage for detecting "
+                       "renames and copies. See `git diff -C`. (default 50)."))
+group.add_option("--git_only_search_patch", action="store_false", default=True,
+                 dest='git_find_copies_harder',
+                 help="Removes --find-copies-harder when seaching for copies")
+group.add_option("--git_no_find_copies", action="store_false", default=True,
+                 dest="git_find_copies",
+                 help=("Prevents git from looking for copies (default off)."))
+# Perforce-specific
+group = parser.add_option_group("Perforce-specific options "
+                                "(overrides P4 environment variables)")
+group.add_option("--p4_port", action="store", dest="p4_port",
+                 metavar="P4_PORT", default=None,
+                 help=("Perforce server and port (optional)"))
+group.add_option("--p4_changelist", action="store", dest="p4_changelist",
+                 metavar="P4_CHANGELIST", default=None,
+                 help=("Perforce changelist id"))
+group.add_option("--p4_client", action="store", dest="p4_client",
+                 metavar="P4_CLIENT", default=None,
+                 help=("Perforce client/workspace"))
+group.add_option("--p4_user", action="store", dest="p4_user",
+                 metavar="P4_USER", default=None,
+                 help=("Perforce user"))
+
+group = parser.add_option_group("Jira options")
+group.add_option('--jira_server', dest='jira_server', metavar='JIRA_SERVER',
+                 default=DEFAULT_JIRA_SERVER)
+group.add_option('--jira_user', dest='jira_user', metavar='JIRA_USER', default=None)
+group.add_option('--jira', dest='jira_tickets', action='append', default=[])
+group.add_option('--nojira', dest='jira_should_update', action='store_false', default=True)
+
+# Clang-Format options
+group = parser.add_option_group("Clang-Format options")
+group.add_option('--check-clang-format', dest='clang_format',
+                 action='store_true', default=False)
+group.add_option('--clang-format-location', dest='clang_format_location',
+                 action='store', type='string')
+group.add_option('--clang-format-script', dest='clang_format_script',
+                 action='store', type='string')
+
+# OAuth 2.0 Methods and Helpers
+class ClientRedirectServer(BaseHTTPServer.HTTPServer):
+  """A server for redirects back to localhost from the associated server.
+
+  Waits for a single request and parses the query parameters for an access token
+  or an error and then stops serving.
+  """
+  access_token = None
+  error = None
+
+
+class ClientRedirectHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+  """A handler for redirects back to localhost from the associated server.
+
+  Waits for a single request and parses the query parameters into the server's
+  access_token or error and then stops serving.
+  """
+
+  def SetResponseValue(self):
+    """Stores the access token or error from the request on the server.
+
+    Will only do this if exactly one query parameter was passed in to the
+    request and that query parameter used 'access_token' or 'error' as the key.
+    """
+    query_string = urlparse.urlparse(self.path).query
+    query_params = urlparse.parse_qs(query_string)
+
+    if len(query_params) == 1:
+      if query_params.has_key(ACCESS_TOKEN_PARAM):
+        access_token_list = query_params[ACCESS_TOKEN_PARAM]
+        if len(access_token_list) == 1:
+          self.server.access_token = access_token_list[0]
+      else:
+        error_list = query_params.get(ERROR_PARAM, [])
+        if len(error_list) == 1:
+          self.server.error = error_list[0]
+
+  def do_GET(self):
+    """Handle a GET request.
+
+    Parses and saves the query parameters and prints a message that the server
+    has completed its lone task (handling a redirect).
+
+    Note that we can't detect if an error occurred.
+    """
+    self.send_response(200)
+    self.send_header('Content-type', 'text/html')
+    self.end_headers()
+    self.SetResponseValue()
+    self.wfile.write(AUTH_HANDLER_RESPONSE)
+
+  def log_message(self, format, *args):
+    """Do not log messages to stdout while running as command line program."""
+    pass
+
+
+def OpenOAuth2ConsentPage(server=DEFAULT_REVIEW_SERVER,
+                          port=DEFAULT_OAUTH2_PORT):
+  """Opens the OAuth 2.0 consent page or prints instructions how to.
+
+  Uses the webbrowser module to open the OAuth server side page in a browser.
+
+  Args:
+    server: String containing the review server URL. Defaults to
+      DEFAULT_REVIEW_SERVER.
+    port: Integer, the port where the localhost server receiving the redirect
+      is serving. Defaults to DEFAULT_OAUTH2_PORT.
+
+  Returns:
+    A boolean indicating whether the page opened successfully.
+  """
+  path = OAUTH_PATH_PORT_TEMPLATE % {'port': port}
+  parsed_url = urlparse.urlparse(server)
+  scheme = parsed_url[0] or 'https'
+  if scheme != 'https':
+    ErrorExit('Using OAuth requires a review server with SSL enabled.')
+  # If no scheme was given on command line the server address ends up in
+  # parsed_url.path otherwise in netloc.
+  host = parsed_url[1] or parsed_url[2]
+  page = '%s://%s%s' % (scheme, host, path)
+  page_opened = webbrowser.open(page, new=1, autoraise=True)
+  if page_opened:
+    print OPEN_LOCAL_MESSAGE_TEMPLATE % (page,)
+  return page_opened
+
+
+def WaitForAccessToken(port=DEFAULT_OAUTH2_PORT):
+  """Spins up a simple HTTP Server to handle a single request.
+
+  Intended to handle a single redirect from the production server after the
+  user authenticated via OAuth 2.0 with the server.
+
+  Args:
+    port: Integer, the port where the localhost server receiving the redirect
+      is serving. Defaults to DEFAULT_OAUTH2_PORT.
+
+  Returns:
+    The access token passed to the localhost server, or None if no access token
+      was passed.
+  """
+  httpd = ClientRedirectServer((LOCALHOST_IP, port), ClientRedirectHandler)
+  # Wait to serve just one request before deferring control back
+  # to the caller of wait_for_refresh_token
+  httpd.handle_request()
+  if httpd.access_token is None:
+    ErrorExit(httpd.error or OAUTH_DEFAULT_ERROR_MESSAGE)
+  return httpd.access_token
+
+
+def GetAccessToken(server=DEFAULT_REVIEW_SERVER, port=DEFAULT_OAUTH2_PORT,
+                   open_local_webbrowser=True):
+  """Gets an Access Token for the current user.
+
+  Args:
+    server: String containing the review server URL. Defaults to
+      DEFAULT_REVIEW_SERVER.
+    port: Integer, the port where the localhost server receiving the redirect
+      is serving. Defaults to DEFAULT_OAUTH2_PORT.
+    open_local_webbrowser: Boolean, defaults to True. If set, opens a page in
+      the user's browser.
+
+  Returns:
+    A string access token that was sent to the local server. If the serving page
+      via WaitForAccessToken does not receive an access token, this method
+      returns None.
+  """
+  access_token = None
+  if open_local_webbrowser:
+    page_opened = OpenOAuth2ConsentPage(server=server, port=port)
+    if page_opened:
+      try:
+        access_token = WaitForAccessToken(port=port)
+      except socket.error, e:
+        print 'Can\'t start local webserver. Socket Error: %s\n' % (e.strerror,)
+
+  if access_token is None:
+    # TODO(dhermes): Offer to add to clipboard using xsel, xclip, pbcopy, etc.
+    page = 'https://%s%s' % (server, OAUTH_PATH)
+    print NO_OPEN_LOCAL_MESSAGE_TEMPLATE % (page,)
+    access_token = raw_input('Enter access token: ').strip()
+
+  return access_token
+
+
+class KeyringCreds(object):
+  def __init__(self, server, host, email):
+    self.server = server
+    # Explicitly cast host to str to work around bug in old versions of Keyring
+    # (versions before 0.10). Even though newer versions of Keyring fix this,
+    # some modern linuxes (such as Ubuntu 12.04) still bundle a version with
+    # the bug.
+    self.host = str(host)
+    self.email = email
+    self.accounts_seen = set()
+
+  def GetUserCredentials(self):
+    """Prompts the user for a username and password.
+
+    Only use keyring on the initial call. If the keyring contains the wrong
+    password, we want to give the user a chance to enter another one.
+    """
+    # Create a local alias to the email variable to avoid Python's crazy
+    # scoping rules.
+    global keyring
+    email = self.email
+    if email is None:
+      email = GetEmail("Email (login for uploading to %s)" % self.server)
+    password = None
+    if keyring and not email in self.accounts_seen:
+      try:
+        password = keyring.get_password(self.host, email)
+      except:
+        # Sadly, we have to trap all errors here as
+        # gnomekeyring.IOError inherits from object. :/
+        print "Failed to get password from keyring"
+        keyring = None
+    if password is not None:
+      print "Using password from system keyring."
+      self.accounts_seen.add(email)
+    else:
+      password = getpass.getpass("Password for %s: " % email)
+      if keyring:
+        answer = raw_input("Store password in system keyring?(y/N) ").strip()
+        if answer == "y":
+          keyring.set_password(self.host, email, password)
+          self.accounts_seen.add(email)
+    return (email, password)
+
+
+class OAuth2Creds(object):
+  """Simple object to hold server and port to be passed to GetAccessToken."""
+
+  def __init__(self, server, port, open_local_webbrowser=True):
+    self.server = server
+    self.port = port
+    self.open_local_webbrowser = open_local_webbrowser
+
+  def __call__(self):
+    """Uses stored server and port to retrieve OAuth 2.0 access token."""
+    return GetAccessToken(server=self.server, port=self.port,
+                          open_local_webbrowser=self.open_local_webbrowser)
+
 
 def GetRpcServer(server, email=None, host_override=None, save_cookies=True,
-                 account_type=AUTH_ACCOUNT_TYPE):
+                 account_type=AUTH_ACCOUNT_TYPE, use_oauth2=False,
+                 oauth2_port=DEFAULT_OAUTH2_PORT,
+                 open_oauth2_local_webbrowser=True):
   """Returns an instance of an AbstractRpcServer.
 
   Args:
@@ -523,20 +1112,23 @@ def GetRpcServer(server, email=None, host_override=None, save_cookies=True,
     save_cookies: Whether authentication cookies should be saved to disk.
     account_type: Account type for authentication, either 'GOOGLE'
       or 'HOSTED'. Defaults to AUTH_ACCOUNT_TYPE.
+    use_oauth2: Boolean indicating whether OAuth 2.0 should be used for
+      authentication.
+    oauth2_port: Integer, the port where the localhost server receiving the
+      redirect is serving. Defaults to DEFAULT_OAUTH2_PORT.
+    open_oauth2_local_webbrowser: Boolean, defaults to True. If True and using
+      OAuth, this opens a page in the user's browser to obtain a token.
 
   Returns:
-    A new AbstractRpcServer, on which RPC calls can be made.
+    A new HttpRpcServer, on which RPC calls can be made.
   """
-
-  rpc_server_class = HttpRpcServer
-
   # If this is the dev_appserver, use fake authentication.
   host = (host_override or server).lower()
   if re.match(r'(http://)?localhost([:/]|$)', host):
     if email is None:
       email = "test@example.com"
-      logging.info("Using debug user %s.  Override with --email" % email)
-    server = rpc_server_class(
+      LOGGER.info("Using debug user %s.  Override with --email" % email)
+    server = HttpRpcServer(
         server,
         lambda: (email, "password"),
         host_override=host_override,
@@ -548,20 +1140,16 @@ def GetRpcServer(server, email=None, host_override=None, save_cookies=True,
     server.authenticated = True
     return server
 
-  def GetUserCredentials():
-    """Prompts the user for a username and password."""
-    # Create a local alias to the email variable to avoid Python's crazy
-    # scoping rules.
-    local_email = email
-    if local_email is None:
-      local_email = GetEmail("Email (login for uploading to %s)" % server)
-    password = GetPassword(server=host, user=local_email, prompt="Password for %s" % local_email)
-    return (local_email, password)
-
-  return rpc_server_class(server,
-                          GetUserCredentials,
-                          host_override=host_override,
-                          save_cookies=save_cookies)
+  positional_args = [server]
+  if use_oauth2:
+    positional_args.append(
+        OAuth2Creds(server, oauth2_port, open_oauth2_local_webbrowser))
+  else:
+    positional_args.append(KeyringCreds(server, host, email).GetUserCredentials)
+  return HttpRpcServer(*positional_args,
+                       host_override=host_override,
+                       save_cookies=save_cookies,
+                       account_type=account_type)
 
 
 def EncodeMultipartFormData(fields, files):
@@ -625,7 +1213,7 @@ def RunShellWithReturnCodeAndStderr(command, print_output=False,
   Returns:
     Tuple (stdout, stderr, return code)
   """
-  logging.info("Running %s", command)
+  LOGGER.info("Running %s", command)
   env = env.copy()
   env['LC_MESSAGES'] = 'C'
   p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -765,13 +1353,13 @@ class VersionControlSystem(object):
       else:
         type = "current"
       if len(content) > MAX_UPLOAD_SIZE:
-        print ("Not uploading the %s file for %s because it's too large." %
-               (type, filename))
+        result = ("Not uploading the %s file for %s because it's too large." %
+            (type, filename))
         file_too_large = True
         content = ""
+      elif options.verbose:
+        result = "Uploading %s file for %s" % (type, filename)
       checksum = md5(content).hexdigest()
-      if options.verbose > 0 and not file_too_large:
-        print "Uploading %s file for %s" % (type, filename)
       url = "/%d/upload_content/%d/%d" % (int(issue), int(patchset), file_id)
       form_fields = [("filename", filename),
                      ("status", status),
@@ -785,14 +1373,24 @@ class VersionControlSystem(object):
         form_fields.append(("user", options.email))
       ctype, body = EncodeMultipartFormData(form_fields,
                                             [("data", filename, content)])
-      response_body = rpc_server.Send(url, body,
-                                      content_type=ctype)
+      try:
+        response_body = rpc_server.Send(url, body, content_type=ctype)
+      except urllib2.HTTPError, e:
+        response_body = ("Failed to upload file for %s. Got %d status code." %
+            (filename, e.code))
+
       if not response_body.startswith("OK"):
         StatusUpdate("  --> %s" % response_body)
         sys.exit(1)
 
+      return result
+
     patches = dict()
     [patches.setdefault(v, k) for k, v in patch_list]
+
+    threads = []
+    thread_pool = ThreadPool(options.num_upload_threads)
+
     for filename in patches.keys():
       base_content, new_content, is_binary, status = files[filename]
       file_id_str = patches.get(filename)
@@ -801,16 +1399,24 @@ class VersionControlSystem(object):
         file_id_str = file_id_str[file_id_str.rfind("_") + 1:]
       file_id = int(file_id_str)
       if base_content != None:
-        UploadFile(filename, file_id, base_content, is_binary, status, True)
+        t = thread_pool.apply_async(UploadFile, args=(filename,
+            file_id, base_content, is_binary, status, True))
+        threads.append(t)
       if new_content != None:
-        UploadFile(filename, file_id, new_content, is_binary, status, False)
+        t = thread_pool.apply_async(UploadFile, args=(filename,
+            file_id, new_content, is_binary, status, False))
+        threads.append(t)
+
+    for t in threads:
+      print t.get(timeout=60)
+
 
   def IsImage(self, filename):
     """Returns true if the filename has an image extension."""
     mimetype =  mimetypes.guess_type(filename)[0]
     if not mimetype:
       return False
-    return mimetype.startswith("image/")
+    return mimetype.startswith("image/") and not mimetype.startswith("image/svg")
 
   def IsBinaryData(self, data):
     """Returns true if data contains a null byte."""
@@ -869,7 +1475,7 @@ class SubversionVCS(VersionControlSystem):
         path = path + "/"
         base = urlparse.urlunparse((scheme, netloc, path, params,
                                     query, fragment))
-        logging.info("Guessed %sbase = %s", guess, base)
+        LOGGER.info("Guessed %sbase = %s", guess, base)
         return base
     if required:
       ErrorExit("Can't find URL in output from svn info")
@@ -897,7 +1503,7 @@ class SubversionVCS(VersionControlSystem):
     for line in data.splitlines():
       if line.startswith("Index:") or line.startswith("Property changes on:"):
         count += 1
-        logging.info(line)
+        LOGGER.info(line)
     if not count:
       ErrorExit("No valid patches found in output from svn diff")
     return data
@@ -1019,7 +1625,7 @@ class SubversionVCS(VersionControlSystem):
                            self._EscapeFilename(filename)], silent_ok=True)
       base_content = ""
       is_binary = bool(mimetype) and not mimetype.startswith("text/")
-      if is_binary and self.IsImage(filename):
+      if is_binary:
         new_content = self.ReadFile(filename)
     elif (status[0] in ("M", "D", "R") or
           (status[0] == "A" and status[3] == "+") or  # Copied file.
@@ -1051,17 +1657,14 @@ class SubversionVCS(VersionControlSystem):
         # Empty base content just to force an upload.
         base_content = ""
       elif is_binary:
-        if self.IsImage(filename):
-          get_base = True
-          if status[0] == "M":
-            if not self.rev_end:
-              new_content = self.ReadFile(filename)
-            else:
-              url = "%s/%s@%s" % (self.svn_base, filename, self.rev_end)
-              new_content = RunShell(["svn", "cat", url],
-                                     universal_newlines=True, silent_ok=True)
-        else:
-          base_content = ""
+        get_base = True
+        if status[0] == "M":
+          if not self.rev_end:
+            new_content = self.ReadFile(filename)
+          else:
+            url = "%s/%s@%s" % (self.svn_base, filename, self.rev_end)
+            new_content = RunShell(["svn", "cat", url],
+                                   universal_newlines=True, silent_ok=True)
       else:
         get_base = True
 
@@ -1187,34 +1790,55 @@ class GitVCS(VersionControlSystem):
 
   def GenerateDiff(self, extra_args):
     extra_args = extra_args[:]
-
-    cmd = "diff"
-
     if self.options.revision:
       if ":" in self.options.revision:
         extra_args = self.options.revision.split(":", 1) + extra_args
       else:
         extra_args = [self.options.revision] + extra_args
-    elif len(extra_args) == 1 and len(extra_args[0]) == 40:
-      cmd = "show"
 
     # --no-ext-diff is broken in some versions of Git, so try to work around
     # this by overriding the environment (but there is still a problem if the
     # git config key "diff.external" is used).
     env = os.environ.copy()
-    if 'GIT_EXTERNAL_DIFF' in env: del env['GIT_EXTERNAL_DIFF']
-    return RunShell(["git", cmd, "--no-ext-diff", "--full-index",
-                     "--ignore-submodules", "-M"] + extra_args, env=env)
+    if "GIT_EXTERNAL_DIFF" in env:
+      del env["GIT_EXTERNAL_DIFF"]
+    # -M/-C will not print the diff for the deleted file when a file is renamed.
+    # This is confusing because the original file will not be shown on the
+    # review when a file is renamed. So, get a diff with ONLY deletes, then
+    # append a diff (with rename detection), without deletes.
+    cmd = [
+        "git", "diff", "--no-color", "--no-ext-diff", "--full-index",
+        "--ignore-submodules", "--src-prefix=a/", "--dst-prefix=b/",
+    ]
+    diff = RunShell(
+        cmd + ["--no-renames", "--diff-filter=D"] + extra_args,
+        env=env, silent_ok=True)
+    assert 0 <= self.options.git_similarity <= 100
+    if self.options.git_find_copies:
+      similarity_options = ["-l100000", "-C%d%%" % self.options.git_similarity]
+      if self.options.git_find_copies_harder:
+        similarity_options.append("--find-copies-harder")
+    else:
+      similarity_options = ["-M%d%%" % self.options.git_similarity ]
+    diff += RunShell(
+        cmd + ["--diff-filter=AMCRT"] + similarity_options + extra_args,
+        env=env, silent_ok=True)
+
+    # The CL could be only file deletion or not. So accept silent diff for both
+    # commands then check for an empty diff manually.
+    if not diff:
+      ErrorExit("No output from %s" % (cmd + extra_args))
+    return diff
 
   def GetUnknownFiles(self):
     status = RunShell(["git", "ls-files", "--exclude-standard", "--others"],
                       silent_ok=True)
     return status.splitlines()
 
-  def GetFileContent(self, file_hash, is_binary):
+  def GetFileContent(self, file_hash):
     """Returns the content of a file identified by its git hash."""
     data, retcode = RunShellWithReturnCode(["git", "show", file_hash],
-                                            universal_newlines=not is_binary)
+                                            universal_newlines=False)
     if retcode:
       ErrorExit("Got error status from 'git show %s'" % file_hash)
     return data
@@ -1229,7 +1853,8 @@ class GitVCS(VersionControlSystem):
       status = "A +"  # Match svn attribute name for renames.
       if filename not in self.hashes:
         # If a rename doesn't change the content, we never get a hash.
-        base_content = RunShell(["git", "show", "HEAD:" + filename])
+        base_content = RunShell(
+            ["git", "show", "HEAD:" + filename], silent_ok=True)
     elif not hash_before:
       status = "A"
       base_content = ""
@@ -1238,20 +1863,22 @@ class GitVCS(VersionControlSystem):
     else:
       status = "M"
 
-    is_binary = self.IsBinaryData(base_content)
-    is_image = self.IsImage(filename)
-
     # Grab the before/after content if we need it.
-    # We should include file contents if it's text or it's an image.
-    if not is_binary or is_image:
-      # Grab the base content if we don't have it already.
-      if base_content is None and hash_before:
-        base_content = self.GetFileContent(hash_before, is_binary)
-      # Only include the "after" file if it's an image; otherwise it
-      # it is reconstructed from the diff.
-      if is_image and hash_after:
-        new_content = self.GetFileContent(hash_after, is_binary)
+    # Grab the base content if we don't have it already.
+    if base_content is None and hash_before:
+      base_content = self.GetFileContent(hash_before)
 
+    is_binary = self.IsImage(filename)
+    if base_content:
+      is_binary = is_binary or self.IsBinaryData(base_content)
+
+    # Only include the "after" file if it's an image; otherwise it
+    # it is reconstructed from the diff.
+    #if hash_after:
+      #new_content = self.GetFileContent(hash_after)
+      #is_binary = is_binary or self.IsBinaryData(new_content)
+      #if not is_binary:
+        #new_content = None
     return (base_content, new_content, is_binary, status)
 
 
@@ -1307,7 +1934,7 @@ class CVSVCS(VersionControlSystem):
       for line in data.splitlines():
         if line.startswith("Index:"):
           count += 1
-          logging.info(line)
+          LOGGER.info(line)
 
     if not count:
       ErrorExit("No valid patches found in output from cvs diff")
@@ -1349,8 +1976,8 @@ class MercurialVCS(VersionControlSystem):
   def _GetRelPath(self, filename):
     """Get relative path of a file according to the current directory,
     given its logical path in the repo."""
-    assert filename.startswith(self.subdir), (filename, self.subdir)
-    return filename[len(self.subdir):].lstrip(r"\/")
+    absname = os.path.join(self.repo_dir, filename)
+    return os.path.relpath(absname)
 
   def GenerateDiff(self, extra_args):
     cmd = ["hg", "diff", "--git", "-r", self.base_rev] + extra_args
@@ -1369,7 +1996,7 @@ class MercurialVCS(VersionControlSystem):
         svndiff.append("Index: %s" % filename)
         svndiff.append("=" * 67)
         filecount += 1
-        logging.info(line)
+        LOGGER.info(line)
       else:
         svndiff.append(line)
     if not filecount:
@@ -1389,9 +2016,8 @@ class MercurialVCS(VersionControlSystem):
     return unknown_files
 
   def GetBaseFile(self, filename):
-    # "hg status" and "hg cat" both take a path relative to the current subdir
-    # rather than to the repo root, but "hg diff" has given us the full path
-    # to the repo root.
+    # "hg status" and "hg cat" both take a path relative to the current subdir,
+    # but "hg diff" has given us the path relative to the repo root.
     base_content = ""
     new_content = None
     is_binary = False
@@ -1424,7 +2050,7 @@ class MercurialVCS(VersionControlSystem):
       # Fetch again without converting newlines
       base_content = RunShell(["hg", "cat", "-r", base_rev, oldrelpath],
         silent_ok=True, universal_newlines=False)
-    if not is_binary or not self.IsImage(relpath):
+    if not is_binary:
       new_content = None
     return base_content, new_content, is_binary, status
 
@@ -1460,15 +2086,15 @@ class PerforceVCS(VersionControlSystem):
 
     ConfirmLogin()
 
-    if not options.message:
+    if not options.title:
       description = self.RunPerforceCommand(["describe", self.p4_changelist],
                                             marshal_output=True)
       if description and "desc" in description:
         # Rietveld doesn't support multi-line descriptions
-        raw_message = description["desc"].strip()
-        lines = raw_message.splitlines()
+        raw_title = description["desc"].strip()
+        lines = raw_title.splitlines()
         if len(lines):
-          options.message = lines[0]
+          options.title = lines[0]
 
   def GetGUID(self):
     """For now we don't know how to get repository ID for Perforce"""
@@ -1745,7 +2371,7 @@ class PerforceVCS(VersionControlSystem):
     is_binary = self.IsPendingBinary(filename)
     if status != "D" and status != "SKIP":
       relpath = self.GetLocalFilename(filename)
-      if is_binary and self.IsImage(relpath):
+      if is_binary:
         new_content = open(relpath, "rb").read()
 
     return base_content, new_content, is_binary, status
@@ -1796,6 +2422,29 @@ def UploadSeparatePatches(issue, rpc_server, patchset, data, options):
 
   Returns a list of [patch_key, filename] for each file.
   """
+  def UploadFile(filename, data):
+    form_fields = [("filename", filename)]
+    if not options.download_base:
+      form_fields.append(("content_upload", "1"))
+    files = [("data", "data.diff", data)]
+    ctype, body = EncodeMultipartFormData(form_fields, files)
+    url = "/%d/upload_patch/%d" % (int(issue), int(patchset))
+
+    try:
+      response_body = rpc_server.Send(url, body, content_type=ctype)
+    except urllib2.HTTPError, e:
+      response_body = ("Failed to upload patch for %s. Got %d status code." %
+          (filename, e.code))
+
+    lines = response_body.splitlines()
+    if not lines or lines[0] != "OK":
+      StatusUpdate("  --> %s" % response_body)
+      sys.exit(1)
+    return ("Uploaded patch for " + filename, [lines[1], filename])
+
+  threads = []
+  thread_pool = ThreadPool(options.num_upload_threads)
+
   patches = SplitPatch(data)
   rv = []
   for patch in patches:
@@ -1803,19 +2452,18 @@ def UploadSeparatePatches(issue, rpc_server, patchset, data, options):
       print ("Not uploading the patch for " + patch[0] +
              " because the file is too large.")
       continue
-    form_fields = [("filename", patch[0])]
-    if not options.download_base:
-      form_fields.append(("content_upload", "1"))
-    files = [("data", "data.diff", patch[1])]
-    ctype, body = EncodeMultipartFormData(form_fields, files)
-    url = "/%d/upload_patch/%d" % (int(issue), int(patchset))
-    print "Uploading patch for " + patch[0]
-    response_body = rpc_server.Send(url, body, content_type=ctype)
-    lines = response_body.splitlines()
-    if not lines or lines[0] != "OK":
-      StatusUpdate("  --> %s" % response_body)
-      sys.exit(1)
-    rv.append([lines[1], patch[0]])
+
+    filename = patch[0]
+    data = patch[1]
+
+    t = thread_pool.apply_async(UploadFile, args=(filename, data))
+    threads.append(t)
+
+  for t in threads:
+    result = t.get(timeout=60)
+    print result[0]
+    rv.append(result[1])
+
   return rv
 
 
@@ -1859,10 +2507,12 @@ def GuessVCSName(options):
   if res != None:
     return res
 
-  # Subversion has a .svn in all working directories.
-  if os.path.isdir('.svn'):
-    logging.info("Guessed VCS = Subversion")
-    return (VCS_SUBVERSION, None)
+  # Subversion from 1.7 has a single centralized .svn folder
+  # ( see http://subversion.apache.org/docs/release-notes/1.7.html#wc-ng )
+  # That's why we use 'svn info' instead of checking for .svn dir
+  res = RunDetectCommand(VCS_SUBVERSION, ["svn", "info"])
+  if res != None:
+    return res
 
   # Git has a command to test if you're in a git tree.
   # Try running it, but don't die if we don't have git installed.
@@ -2045,231 +2695,50 @@ def FormatSubversionPropertyChanges(filename, props):
     prop_changes_lines.append("   + " + value)
   return "\n".join(prop_changes_lines) + "\n"
 
-def ParseJiraCases(msg):
-  return re.findall(r'[A-Z]+-[1-9][0-9]*', msg)
 
-def UpdateJiraCases(jira_server, jira_user, jira_tickets, issue):
-  try:
-    import suds
-  except ImportError:
-    print"WARNING: Dependency missing for updating Jira.  Please 'pip install suds'."
-    return
+def FindClangFormat():
+    """Try to find clang_format.py if user did not specify a location
+    """
+    root = RunShell(['git', 'rev-parse', '--show-toplevel']).rstrip()
 
-  print "Updating jira tickets " + ', '.join(jira_tickets)
-  jira_url = jira_server + '/rpc/soap/jirasoapservice-v2?wsdl'
-  jira = suds.client.Client(jira_url)
+    paths = [
+        os.path.join(root, 'buildscripts/clang_format.py'),
+        # If we are in the enterprise repro, search up to try to find clang_format.py
+        os.path.abspath(os.path.join(root, '../../../../../buildscripts/clang_format.py')),
+        ]
 
-  try:
-    auth_token = jira.service.login(
-      jira_user,
-      GetPassword(server=jira_server, user=jira_user, prompt="Jira password for %s: " % jira_user))
-  except suds.WebFault, ex:
-    print "Could not authenticate to jira service: " + ex.fault.faultstring
-    return
+    for p in paths:
+        if os.path.isfile(p):
+            return p
 
-  issue_comment = 'Code review url: %s' % issue
-  for ticket in jira_tickets:
+    raise Exception('Cannot find clang_format.py in paths: ' + str(paths))
+
+def CheckClangFormat(data, location, script):
+    """Run clang-format against the files in the supplied patch
+        Note: This will check the files, not the patch itself
+    """
+    print 'Checking Clang-Format for patch'
+
+    # Find clang_format.py if user did not specify it
+    if not script:
+        script = FindClangFormat()
+
+    # Give it the patch to lint, exit if lint fails
+    # While this function is not ideal, it works on Windows while NamedTemporaryFile does not
+    handle, temp_file_name = tempfile.mkstemp()
     try:
-      jira.service.addComment(auth_token, ticket, dict(body=issue_comment, roleLevel='Developers'))
-    except suds.WebFault, ex:
-      print "Failed to add comment to ticket %s: %s" % (ticket, ex.fault.faultstring)
+        with open(temp_file_name, 'w') as temp_file:
+            temp_file.write(data)
+            temp_file.flush()
 
-  # Change state to In Code Review if we can. -- try different transitions for different start state
-  for ticket in jira_tickets:
-    transitionFailed = True
-    for code in ["751", "761", "711"]:
-        try:
-          jira.service.progressWorkflowAction(auth_token, ticket, code, None)
-        except suds.WebFault, ex:
-          transitionFailed = True
-        transitionFailed = False
-        break
-
-    if transitionFailed:
-        print "Failed to transition to 'In Code Review' for ticket %s" % (ticket)
-
-
-def GetRemoteRepoName():
-  """Get the 'canonical' name of a repo.
-
-  As an example, this branch: upstream  https://github.com/10gen/corp.git (push)
-  should return this value: corp
-
-  This name is used in populating the CC field of the email.
-  """
-  out = RunShell(["git", "remote", "-v"]).splitlines()
-
-  # First search all remote repos for 'upstream'
-  for line in out:
-      matched = re.search(r"^upstream.*\/([^\/]+?)(.git)? \(push\)$", line)
-      if matched:
-          return matched.group(1)
-
-  # If no 'upstream' repos then search for 'origin'
-  for line in out:
-      matched = re.search(r"^origin.*\/([^\/]+?)(.git)? \(push\)$", line)
-      if matched:
-          return matched.group(1)
-
-  # If neither then we assume that this is an atypical case and that
-  # engineer can add a CC email manually later
-  return None
-
-
-def readRepoConfig():
-  repoConfig = {}
-  name = GetRemoteRepoName()
-  if name is None:
-    return None
-
-  try:
-    gitRoot = RunShell(["git", "rev-parse", "--show-toplevel"]).strip()
-
-    path = os.path.sep.join([gitRoot, 'codereview.rc' ])
-    print "os.path.sep.join = ", os.path.sep.join([gitRoot, 'codereview.rc' ])
-    print "os.path.join = ", os.path.join([gitRoot, 'codereview.rc' ])
-    if os.path.exists(path):
-      with open(path) as configFile:
-        for line in configFile:
-          (key, val) = line.split('=')
-          repoConfig[key] = val.strip()
-  except IOError:
-    pass
-
-  return repoConfig
-
-def ConstructCCEmail():
-  remote_repo_name = GetRemoteRepoName()
-
-  if remote_repo_name is None:
-    return None
-
-  ccList = [''.join(['codereview-', remote_repo_name, '@10gen.com'])]
-  ccList.append(config.get("CC", ""))
-
-  return ','.join(ccList)
-
-config = readRepoConfig()
-
-parser = optparse.OptionParser(
-    usage="%prog [options] [-- diff_options] [path...]",
-    add_help_option=False,
-    formatter=CondensedHelpFormatter()
-)
-parser.add_option("-h", "--help", action="store_true",
-                  help="Show this help message and exit.")
-parser.add_option("-y", "--assume_yes", action="store_true",
-                  dest="assume_yes", default=False,
-                  help="Assume that the answer to yes/no questions is 'yes'.")
-# Logging
-group = parser.add_option_group("Logging options")
-group.add_option("-q", "--quiet", action="store_const", const=0,
-                 dest="verbose", help="Print errors only.")
-group.add_option("-v", "--verbose", action="store_const", const=2,
-                 dest="verbose", default=1,
-                 help="Print info level logs.")
-group.add_option("--noisy", action="store_const", const=3,
-                 dest="verbose", help="Print all logs.")
-group.add_option("--print_diffs", dest="print_diffs", action="store_true",
-                 help="Print full diffs.")
-# Review server
-group = parser.add_option_group("Review server options")
-group.add_option("-s", "--server", action="store", dest="server",
-                 default=DEFAULT_REVIEW_SERVER,
-                 metavar="SERVER",
-                 help=("The server to upload to. The format is host[:port]. "
-                       "Defaults to '%default'."))
-group.add_option("-e", "--email", action="store", dest="email",
-                 metavar="EMAIL", default=None,
-                 help="The username to use. Will prompt if omitted.")
-group.add_option("-H", "--host", action="store", dest="host",
-                 metavar="HOST", default=None,
-                 help="Overrides the Host header sent with all RPCs.")
-group.add_option("--no_cookies", action="store_false",
-                 dest="save_cookies", default=True,
-                 help="Do not save authentication cookies to local disk.")
-group.add_option("--account_type", action="store", dest="account_type",
-                 metavar="TYPE", default=AUTH_ACCOUNT_TYPE,
-                 choices=["GOOGLE", "HOSTED"],
-                 help=("Override the default account type "
-                       "(defaults to '%default', "
-                       "valid choices are 'GOOGLE' and 'HOSTED')."))
-# Issue
-group = parser.add_option_group("Issue options")
-group.add_option("-d", "--description", action="store", dest="description",
-                 metavar="DESCRIPTION", default=None,
-                 help="Optional description when creating an issue.")
-group.add_option("-f", "--description_file", action="store",
-                 dest="description_file", metavar="DESCRIPTION_FILE",
-                 default=None,
-                 help="Optional path of a file that contains "
-                      "the description when creating an issue.")
-group.add_option("-r", "--reviewers", action="store", dest="reviewers",
-                 metavar="REVIEWERS", default=config.get("reviewers", None),
-                 help="Add reviewers (comma separated email addresses).")
-group.add_option("--cc", action="store", dest="cc",
-                 metavar="CC", default=ConstructCCEmail(),
-                 help="Add CC (comma separated email addresses).")
-group.add_option("--private", action="store_true", dest="private",
-                 default=False,
-                 help="Make the issue restricted to reviewers and those CCed")
-# Upload options
-group = parser.add_option_group("Patch options")
-group.add_option("-m", "--message", action="store", dest="message",
-                 metavar="MESSAGE", default=None,
-                 help="A message to identify the patch. "
-                      "Will prompt if omitted.")
-group.add_option("-i", "--issue", type="int", action="store",
-                 metavar="ISSUE", default=None,
-                 help="Issue number to which to add. Defaults to new issue.")
-group.add_option("--base_url", action="store", dest="base_url", default=None,
-                 help="Base URL path for files (listed as \"Base URL\" when "
-                 "viewing issue).  If omitted, will be guessed automatically "
-                 "for SVN repos and left blank for others.")
-group.add_option("--download_base", action="store_true",
-                 dest="download_base", default=False,
-                 help="Base files will be downloaded by the server "
-                 "(side-by-side diffs may not work on files with CRs).")
-group.add_option("--rev", action="store", dest="revision",
-                 metavar="REV", default=None,
-                 help="Base revision/branch/tree to diff against. Use "
-                      "rev1:rev2 range to review already committed changeset.")
-group.add_option("--send_mail", action="store_true",
-                 dest="send_mail", default=False,
-                 help="Send notification email to reviewers.")
-group.add_option("-p", "--send_patch", action="store_true",
-                 dest="send_patch", default=False,
-                 help="Same as --send_mail, but include diff as an "
-                      "attachment, and prepend email subject with 'PATCH:'.")
-group.add_option("--vcs", action="store", dest="vcs",
-                 metavar="VCS", default=None,
-                 help=("Version control system (optional, usually upload.py "
-                       "already guesses the right VCS)."))
-group.add_option("--emulate_svn_auto_props", action="store_true",
-                 dest="emulate_svn_auto_props", default=False,
-                 help=("Emulate Subversion's auto properties feature."))
-# Perforce-specific
-group = parser.add_option_group("Perforce-specific options "
-                                "(overrides P4 environment variables)")
-group.add_option("--p4_port", action="store", dest="p4_port",
-                 metavar="P4_PORT", default=None,
-                 help=("Perforce server and port (optional)"))
-group.add_option("--p4_changelist", action="store", dest="p4_changelist",
-                 metavar="P4_CHANGELIST", default=None,
-                 help=("Perforce changelist id"))
-group.add_option("--p4_client", action="store", dest="p4_client",
-                 metavar="P4_CLIENT", default=None,
-                 help=("Perforce client/workspace"))
-group.add_option("--p4_user", action="store", dest="p4_user",
-                 metavar="P4_USER", default=None,
-                 help=("Perforce user"))
-
-group = parser.add_option_group("Jira options")
-group.add_option('--jira_server', dest='jira_server', metavar='JIRA_SERVER',
-                 default=DEFAULT_JIRA_SERVER)
-group.add_option('--jira_user', dest='jira_user', metavar='JIRA_USER', default=None)
-group.add_option('--jira', dest='jira_tickets', action='append', default=[])
-group.add_option('--nojira', dest='jira_should_update', action='store_false', default=True)
+            cmd = ['python', script, 'lint-patch']
+            if location:
+                cmd.append('--clang-format=' + location)
+            cmd.append(temp_file.name)
+            RunShell(cmd, True)
+    finally:
+        os.close(handle)
+        os.unlink(temp_file_name)
 
 def RealMain(argv, data=None):
   """The real main function.
@@ -2288,7 +2757,11 @@ def RealMain(argv, data=None):
   if options.help:
     if options.verbose < 2:
       # hide Perforce options
-      parser.epilog = "Use '--help -v' to show additional Perforce options."
+      parser.epilog = (
+        "Use '--help -v' to show additional Perforce options. "
+        "For more help, see "
+        "http://code.google.com/p/rietveld/wiki/CodeReviewHelp"
+        )
       parser.option_groups.remove(parser.get_option_group('--p4_port'))
     parser.print_help()
     sys.exit(0)
@@ -2296,9 +2769,9 @@ def RealMain(argv, data=None):
   global verbosity
   verbosity = options.verbose
   if verbosity >= 3:
-    logging.getLogger().setLevel(logging.DEBUG)
+    LOGGER.setLevel(logging.DEBUG)
   elif verbosity >= 2:
-    logging.getLogger().setLevel(logging.INFO)
+    LOGGER.setLevel(logging.INFO)
 
   vcs = GuessVCS(options)
 
@@ -2316,12 +2789,14 @@ def RealMain(argv, data=None):
 
   if not base and options.download_base:
     options.download_base = True
-    logging.info("Enabled upload of base file")
+    LOGGER.info("Enabled upload of base file")
   if not options.assume_yes:
     vcs.CheckForUnknownFiles()
   if data is None:
     data = vcs.GenerateDiff(args)
   data = vcs.PostProcessDiff(data)
+  if options.clang_format:
+      CheckClangFormat(data, options.clang_format_location, options.clang_format_script)
   if options.print_diffs:
     print "Rietveld diff start:*****"
     print data
@@ -2329,19 +2804,17 @@ def RealMain(argv, data=None):
   files = vcs.GetBaseFiles(data)
   if verbosity >= 1:
     print "Upload server:", options.server, "(change with -s/--server)"
-  if options.issue:
-    prompt = "Message describing this patch set: "
-  else:
-    prompt = "New issue subject: "
-  message = options.message or raw_input(prompt).strip()
-  if not message:
-    ErrorExit("A non-empty message is required")
+  if options.use_oauth2:
+    options.save_cookies = False
   rpc_server = GetRpcServer(options.server,
                             options.email,
                             options.host,
                             options.save_cookies,
-                            options.account_type)
-  form_fields = [("subject", message)]
+                            options.account_type,
+                            options.use_oauth2,
+                            options.oauth2_port,
+                            options.open_oauth2_local_webbrowser)
+  form_fields = []
 
   repo_guid = vcs.GetGUID()
   if repo_guid:
@@ -2350,7 +2823,7 @@ def RealMain(argv, data=None):
     b = urlparse.urlparse(base)
     username, netloc = urllib.splituser(b.netloc)
     if username:
-      logging.info("Removed username from base URL")
+      LOGGER.info("Removed username from base URL")
       base = urlparse.urlunparse((b.scheme, netloc, b.path, b.params,
                                   b.query, b.fragment))
     form_fields.append(("base", base))
@@ -2366,15 +2839,38 @@ def RealMain(argv, data=None):
     for cc in options.cc.split(','):
       CheckReviewer(cc)
     form_fields.append(("cc", options.cc))
-  description = options.description
-  if options.description_file:
-    if options.description:
-      ErrorExit("Can't specify description and description_file")
-    file = open(options.description_file, 'r')
-    description = file.read()
+
+  # Process --message, --title and --file.
+  message = options.message or ""
+  title = options.title or ""
+  if options.file:
+    if options.message:
+      ErrorExit("Can't specify both message and message file options")
+    file = open(options.file, 'r')
+    message = file.read()
     file.close()
-  if description:
-    form_fields.append(("description", description))
+  if options.issue:
+    prompt = "Title describing this patch set: "
+  else:
+    prompt = "New issue subject: "
+  title = (
+      title or message.split('\n', 1)[0].strip() or raw_input(prompt).strip())
+  if not title and not options.issue:
+    ErrorExit("A non-empty title is required for a new issue")
+  # For existing issues, it's fine to give a patchset an empty name. Rietveld
+  # doesn't accept that so use a whitespace.
+  title = title or " "
+  if len(title) > 100:
+    title = title[:99] + '…'
+  if title and not options.issue:
+    message = message or title
+
+  form_fields.append(("subject", title))
+  # If it's a new issue send message as description. Otherwise a new
+  # message is created below on upload_complete.
+  if options.description:
+    form_fields.append(("description", options.description))
+
   # Send a hash of all the base file so the server can determine if a copy
   # already exists in an earlier patchset.
   base_hashes = ""
@@ -2392,10 +2888,6 @@ def RealMain(argv, data=None):
       form_fields.append(("private", "1"))
   if options.send_patch:
     options.send_mail = True
-  # If we're uploading base files, don't send the email before the uploads, so
-  # that it contains the file status.
-  if options.send_mail and options.download_base:
-    form_fields.append(("send_mail", "1"))
   if not options.download_base:
     form_fields.append(("content_upload", "1"))
   if len(data) > MAX_UPLOAD_SIZE:
@@ -2423,6 +2915,9 @@ def RealMain(argv, data=None):
     sys.exit(0)
   issue = msg[msg.rfind("/")+1:]
 
+  if options.tag_local_repo:
+    TagLocalRepo(options.revision,issue)
+
   if not uploaded_diff_file:
     result = UploadSeparatePatches(issue, rpc_server, patchset, data, options)
     if not options.download_base:
@@ -2430,22 +2925,52 @@ def RealMain(argv, data=None):
 
   if not options.download_base:
     vcs.UploadBaseFiles(issue, rpc_server, patches, patchset, options, files)
-    if options.send_mail:
-      payload = ""
-      if options.send_patch:
-        payload=urllib.urlencode({"attach_patch": "yes"})
-      rpc_server.Send("/" + issue + "/mail", payload=payload)
 
-  jira_tickets = options.jira_tickets
-  jira_tickets += ParseJiraCases(message or '')
-  jira_tickets += ParseJiraCases(description or '')
+  payload = {}  # payload for final request
+  if options.send_mail:
+    payload["send_mail"] = "yes"
+    if options.send_patch:
+      payload["attach_patch"] = "yes"
+  payload = urllib.urlencode(payload)
+  rpc_server.Send("/" + issue + "/upload_complete/" + (patchset or ""),
+                  payload=payload)
+  description = options.description
 
-  if options.jira_should_update and len(jira_tickets):
+
+  jira_tickets = set(
+    options.jira_tickets +
+    ParseJiraCases(message or '') +
+    ParseJiraCases(description or '')
+  )
+
+  if options.jira_should_update and len(jira_tickets) and not options.issue:
     jira_user = options.jira_user or options.email.partition('@')[0]
     issue_url = msg[msg.rfind('http:'):]
     UpdateJiraCases(options.jira_server, jira_user, jira_tickets, issue_url)
 
   return issue, patchset
+
+def GetPassword(server, user, prompt="Password: "):
+  global keyring
+  password = None
+  if keyring:
+    try:
+      password = keyring.get_password(server, user)
+    except:
+      # Sadly, we have to trap all errors here as
+      # gnomekeyring.IOError inherits from object. :/
+      print "Failed to get password from keyring"
+      keyring = None
+  if password is not None:
+    print "Using password from system keyring."
+  else:
+    password = getpass.getpass(prompt)
+    if keyring:
+      answer = raw_input("Store password in system keyring?(y/N) ").strip()
+      if answer == "y":
+        keyring.set_password(server, user, password)
+  return password
+
 
 
 def main():
@@ -2459,6 +2984,19 @@ def main():
     StatusUpdate("Interrupted.")
     sys.exit(1)
 
+def TagLocalRepo(revision,issue):
+  if ".." in revision:
+    a_revision = revision.split("..")[0]
+    b_revision = revision.split("..")[1]
+  elif ":" in revision:
+    a_revision = revision.split(":")[0]
+    b_revision = revision.split(":")[1]
+  if not a_revision or not b_revision:
+    raise Exception("Can't parse start and end revisions out of revision argument")
+  a_tag = "codereview_a_%s" % issue
+  b_tag = "codereview_b_%s" % issue
+  RunShell(["git", "tag", a_tag, a_revision], silent_ok = True)
+  RunShell(["git", "tag", b_tag, b_revision], silent_ok = True)
 
 if __name__ == "__main__":
   main()
