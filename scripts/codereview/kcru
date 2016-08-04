@@ -1,15 +1,14 @@
 #!/bin/bash
 
-jiraUsername=bgrabar
-emailAddress=bob.grabar@mongodb.com
+jiraUsername='bgrabar'
 codereviewdir='/Users/bob/myrepo/scripts/codereview'
 
 # get the commit message
 msg=`git log -1 --oneline | cut -d' ' -f2-`
 hash=`git rev-parse HEAD`
 hash=`git rev-parse HEAD~`..${hash}
-# Tells how many commits to send
 
+# Tells how many commits to send
 if [[ $# -eq 0 ]]; then
 # just last commit
 python "$codereviewdir/upload.py" -m "$msg" --rev $hash --jira_user $jiraUsername
