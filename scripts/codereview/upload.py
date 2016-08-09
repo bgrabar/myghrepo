@@ -49,7 +49,6 @@ import re
 import socket
 import subprocess
 import sys
-import tempfile
 import urllib
 import urllib2
 import urlparse
@@ -191,7 +190,7 @@ def UpdateJiraCases(jira_server, jira_user, jira_tickets, issue):
 
   try:
     logging.raiseExceptions = False
-    logging.getLogger('suds.client').propagate = False
+    logging.getLogger('suds.client').propagate = False 
     auth_token = jira.service.login(
       jira_user,
       GetPassword(server=jira_server, user=jira_user, prompt="Jira password for %s: " % jira_user))
@@ -837,9 +836,6 @@ group.add_option("--rev", action="store", dest="revision",
 group.add_option("--send_mail", action="store_true",
                  dest="send_mail", default=False,
                  help="Send notification email to reviewers.")
-group.add_option("--tag_local_repo", action="store_true",
-                 dest="tag_local_repo", default=False,
-                 help="Tag base and new commits with codereview_a_<issue id> and codereview_b_<issue id>")
 group.add_option("-p", "--send_patch", action="store_true",
                  dest="send_patch", default=False,
                  help="Same as --send_mail, but include diff as an "
@@ -886,14 +882,6 @@ group.add_option('--jira_user', dest='jira_user', metavar='JIRA_USER', default=N
 group.add_option('--jira', dest='jira_tickets', action='append', default=[])
 group.add_option('--nojira', dest='jira_should_update', action='store_false', default=True)
 
-# Clang-Format options
-group = parser.add_option_group("Clang-Format options")
-group.add_option('--check-clang-format', dest='clang_format',
-                 action='store_true', default=False)
-group.add_option('--clang-format-location', dest='clang_format_location',
-                 action='store', type='string')
-group.add_option('--clang-format-script', dest='clang_format_script',
-                 action='store', type='string')
 
 # OAuth 2.0 Methods and Helpers
 class ClientRedirectServer(BaseHTTPServer.HTTPServer):
@@ -2696,50 +2684,6 @@ def FormatSubversionPropertyChanges(filename, props):
   return "\n".join(prop_changes_lines) + "\n"
 
 
-def FindClangFormat():
-    """Try to find clang_format.py if user did not specify a location
-    """
-    root = RunShell(['git', 'rev-parse', '--show-toplevel']).rstrip()
-
-    paths = [
-        os.path.join(root, 'buildscripts/clang_format.py'),
-        # If we are in the enterprise repro, search up to try to find clang_format.py
-        os.path.abspath(os.path.join(root, '../../../../../buildscripts/clang_format.py')),
-        ]
-
-    for p in paths:
-        if os.path.isfile(p):
-            return p
-
-    raise Exception('Cannot find clang_format.py in paths: ' + str(paths))
-
-def CheckClangFormat(data, location, script):
-    """Run clang-format against the files in the supplied patch
-        Note: This will check the files, not the patch itself
-    """
-    print 'Checking Clang-Format for patch'
-
-    # Find clang_format.py if user did not specify it
-    if not script:
-        script = FindClangFormat()
-
-    # Give it the patch to lint, exit if lint fails
-    # While this function is not ideal, it works on Windows while NamedTemporaryFile does not
-    handle, temp_file_name = tempfile.mkstemp()
-    try:
-        with open(temp_file_name, 'w') as temp_file:
-            temp_file.write(data)
-            temp_file.flush()
-
-            cmd = ['python', script, 'lint-patch']
-            if location:
-                cmd.append('--clang-format=' + location)
-            cmd.append(temp_file.name)
-            RunShell(cmd, True)
-    finally:
-        os.close(handle)
-        os.unlink(temp_file_name)
-
 def RealMain(argv, data=None):
   """The real main function.
 
@@ -2795,8 +2739,6 @@ def RealMain(argv, data=None):
   if data is None:
     data = vcs.GenerateDiff(args)
   data = vcs.PostProcessDiff(data)
-  if options.clang_format:
-      CheckClangFormat(data, options.clang_format_location, options.clang_format_script)
   if options.print_diffs:
     print "Rietveld diff start:*****"
     print data
@@ -2868,8 +2810,8 @@ def RealMain(argv, data=None):
   form_fields.append(("subject", title))
   # If it's a new issue send message as description. Otherwise a new
   # message is created below on upload_complete.
-  if options.description:
-    form_fields.append(("description", options.description))
+  if message and not options.issue:
+    form_fields.append(("description", message))
 
   # Send a hash of all the base file so the server can determine if a copy
   # already exists in an earlier patchset.
@@ -2915,9 +2857,6 @@ def RealMain(argv, data=None):
     sys.exit(0)
   issue = msg[msg.rfind("/")+1:]
 
-  if options.tag_local_repo:
-    TagLocalRepo(options.revision,issue)
-
   if not uploaded_diff_file:
     result = UploadSeparatePatches(issue, rpc_server, patchset, data, options)
     if not options.download_base:
@@ -2931,19 +2870,19 @@ def RealMain(argv, data=None):
     payload["send_mail"] = "yes"
     if options.send_patch:
       payload["attach_patch"] = "yes"
+  if options.issue and message:
+    payload["message"] = message
   payload = urllib.urlencode(payload)
   rpc_server.Send("/" + issue + "/upload_complete/" + (patchset or ""),
                   payload=payload)
   description = options.description
 
 
-  jira_tickets = set(
-    options.jira_tickets +
-    ParseJiraCases(message or '') +
-    ParseJiraCases(description or '')
-  )
+  jira_tickets = options.jira_tickets
+  jira_tickets += ParseJiraCases(message or '')
+  jira_tickets += ParseJiraCases(description or '')
 
-  if options.jira_should_update and len(jira_tickets) and not options.issue:
+  if options.jira_should_update and len(jira_tickets):
     jira_user = options.jira_user or options.email.partition('@')[0]
     issue_url = msg[msg.rfind('http:'):]
     UpdateJiraCases(options.jira_server, jira_user, jira_tickets, issue_url)
@@ -2984,19 +2923,6 @@ def main():
     StatusUpdate("Interrupted.")
     sys.exit(1)
 
-def TagLocalRepo(revision,issue):
-  if ".." in revision:
-    a_revision = revision.split("..")[0]
-    b_revision = revision.split("..")[1]
-  elif ":" in revision:
-    a_revision = revision.split(":")[0]
-    b_revision = revision.split(":")[1]
-  if not a_revision or not b_revision:
-    raise Exception("Can't parse start and end revisions out of revision argument")
-  a_tag = "codereview_a_%s" % issue
-  b_tag = "codereview_b_%s" % issue
-  RunShell(["git", "tag", a_tag, a_revision], silent_ok = True)
-  RunShell(["git", "tag", b_tag, b_revision], silent_ok = True)
 
 if __name__ == "__main__":
   main()

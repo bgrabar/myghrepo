@@ -1,29 +1,23 @@
 #!/bin/bash
 
-jiraUsername='bgrabar'
-codereviewdir='/Users/bob/myrepo/scripts/codereview'
+set -e
+
+jiraUsername=bgrabar
+emailAddress=bob.grabar@mongodb.com
 
 # get the commit message
 msg=`git log -1 --oneline | cut -d' ' -f2-`
 hash=`git rev-parse HEAD`
-hash=`git rev-parse HEAD~`..${hash}
+hash=$hash~..$hash
 
-# Tells how many commits to send
 if [[ $# -eq 0 ]]; then
-# just last commit
-python "$codereviewdir/upload.py" -m "$msg" --rev $hash --jira_user $jiraUsername
+   # just last commit
+   python2 ~/myrepo/scripts/codereview/upload.py -y \
+       --jira_user $jiraUsername --email $emailAddress -m "$msg" $hash
 else
-# issue given
+   # issue given
+   issue=$1
 
-if [ $1 == "--help" ]; then
- echo "First: issue; Second: hash; Third: message."
- exit 0
+   python2 ~/myrepo/scripts/codereview/upload.py -y \
+       --jira_user $jiraUsername --email $emailAddress -m "$msg" -i $issue $hash
 fi
-
-issue=$1
-hash=$2
-msg=$3
-python "$codereviewdir/upload.py" -m "$msg" -i $issue --rev $hash  --jira_user $jiraUsername
-fi
-
-#eof
