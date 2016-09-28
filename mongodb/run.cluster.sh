@@ -1,9 +1,6 @@
 #!/bin/bash
 
-# To run from **compiled** mongo code, use "/Users/bob/mongo/mongod" instead of "mongod" and use
-# "/Users/bob/mongo/mongos" instead of "mongos".
 
-# Why does adding the keyFile to each line fail?: --keyFile /Users/bob/keyfile
 
 
 
