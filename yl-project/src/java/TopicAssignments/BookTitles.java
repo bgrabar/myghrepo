@@ -10,6 +10,7 @@ import java.util.HashMap;
 /**
  * Creates an object that contains a hash map of text titles and their corresponding book titles
  */
+
 public class BookTitles {
     
     private HashMap<String, String> titlesMap = new HashMap<String, String>();
