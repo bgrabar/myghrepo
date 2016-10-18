@@ -1,5 +1,4 @@
-java/.recommenders/
-java/.idea
-code/java/.idea/
-code/java/code.iml
-code/java/out/
+scsu-projects/*/*.iml
+scsu-projects/*/.idea
+scsu-projects/*/out
+.DS*
