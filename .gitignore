@@ -1,7 +1,12 @@
 **/*.iml
 **/.idea/
 **/out/
-scsu-projects/*/*.iml
-scsu-projects/*/.idea
-scsu-projects/*/out
-.DS*
+scsu/*/*.iml
+scsu/*/.idea
+scsu/*/out
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
+*/*/*/.DS_Store
+*/*/*/*/.DS_Store
+*/*/*/*/*/.DS_Store
