@@ -1,9 +1,3 @@
-**/*.iml
-**/.idea/
-**/out/
-scsu/*/*.iml
-scsu/*/.idea
-scsu/*/out
 .DS_Store
 */.DS_Store
 */*/.DS_Store
